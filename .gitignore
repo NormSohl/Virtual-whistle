@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.venv/
+build/
+*.wav.tmp
+.DS_Store

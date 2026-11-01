@@ -1,0 +1,12 @@
+feature,position_mm,diameter_a_mm,diameter_b_mm,depth_mm,notes
+total_length,,,,,top end to foot end in position_mm
+bore_top,,,,,
+bore_foot,,,,,
+window,,,,,position = labium edge; diameter_a = window length; diameter_b = window width
+windway_exit,,,,,diameter_a = height; diameter_b = width; depth_mm = windway length
+hole_1,,,,,depth_mm = wall thickness
+hole_2,,,,,
+hole_3,,,,,
+hole_4,,,,,
+hole_5,,,,,
+hole_6,,,,,
