@@ -119,3 +119,10 @@ Cause: as breath falls at a release, the jet slows and its delay lengthens, so t
 Fixes: the jet delay may shorten at any speed but lengthens at most 0.003 samples per sample (about 30 ms to drop a second-octave delay to first-register length at 96 kHz), so on a quick release the drive reaches zero first and the tube rings down at its own pitch. Releases in the page now take ~8 ms from any level, like a tongue stop.
 
 Release-tail inharmonic energy relative to harmonics (C++ render, 30 ms release): C#' -27 to -42 dB, B' -32 to -43 dB, G' -44 to -53 dB. Scale pitches unchanged (14/14 in register, sd 10.1 cents). JS port re-checked against C++: 0.00 cents, 0.02 dB.
+
+## Cross fingerings in the real-time synth
+The synth has no fingering chart: hole states go straight into the acoustics. Rendering every forked fingering Norm recorded (`pitches_forked.csv`; first register at breath 0.22, second at 0.65) and comparing to his recordings:
+
+- 13 of 15 within ±23 cents, sd 10 cents, mean +3 cents.
+- Cross-fingered C natural (oxxooo), which plays 86 cents sharp on this whistle: synth within 0.1 cents of the recording.
+- The same two misses as the impedance model (oxxxxo, Norm: "unplayable"; second-register xxoxxo), by ~76 cents.
