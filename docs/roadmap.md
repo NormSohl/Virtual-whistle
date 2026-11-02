@@ -18,6 +18,7 @@ Norm's fingering requirements:
 - **Seventh finger (R4 pinky) closes to a whole tone below the tonic.** Acoustically: the bore extends below hole 6 with a seventh hole for the pinky, open by default; closing it plays the tone below the tonic (C on a D whistle).
 - Cross fingerings land on Norm's rationalized charts.
 - Thumb and R4 are optional per instrument: the WARBL senses both, and each model chooses whether they act acoustically (vent, seventh hole) or are ignored, so six-hole players are unaffected.
+- Fallback (Norm, not pursued yet): thumb as a plain switch outside the acoustics, e.g. an octave or register control, the way the WARBL uses it today.
 - Open idea: a "moving" thumb vent, where the vent's effective position and size follow the fingering (keywork no real instrument could carry).
 
 Free variables: hole positions and sizes (fingers are on the WARBL, so no hand-span limits), bore profile, jet and window parameters.
