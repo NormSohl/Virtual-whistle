@@ -67,7 +67,7 @@ h1 { font-size: 1.75rem; font-weight: 700; letter-spacing: 0.01em; margin: 0; te
 .hole::before { content: ""; width: 26px; height: 26px; border-radius: 50%; background: var(--hole);
   box-shadow: inset 0 3px 4px rgba(0,0,0,.6); transition: transform .08s; }
 .hole.covered::before { background: var(--covered); box-shadow: 0 0 0 5px color-mix(in srgb, var(--covered) 35%, transparent); transform: scale(1.15); }
-.hole.half::before { background: linear-gradient(90deg, var(--covered) 50%, var(--hole) 50%); }
+.hole.partial::before { background: conic-gradient(var(--covered) calc(var(--cover, 0) * 360deg), var(--hole) 0); }
 .hole:focus-visible { outline: 3px solid var(--ink); outline-offset: -6px; border-radius: 50%; }
 .hole span { position: absolute; bottom: -18px; font-family: var(--mono); font-size: 0.7rem; color: var(--muted); }
 
@@ -402,7 +402,7 @@ const keyEls = NOTES.map(([n, p]) => {
 
 const pad = document.getElementById('pad');
 const level = document.getElementById('level');
-function pattern() { return holes.map((h) => (h ? 'x' : 'o')).join(''); }
+function pattern() { return holes.map((h) => (h > 0.75 ? 'x' : h < 0.25 ? 'o' : 'h')).join(''); }
 
 function drawBands() {
   pad.querySelectorAll('.band, .lbl').forEach((e) => e.remove());
@@ -424,7 +424,12 @@ function drawBands() {
 }
 
 function update() {
-  holeEls.forEach((el, i) => el.classList.toggle('covered', !!holes[i]));
+  holeEls.forEach((el, i) => {
+    const c = holes[i];
+    el.classList.toggle('covered', c >= 0.98);
+    el.classList.toggle('partial', c > 0.02 && c < 0.98);
+    el.style.setProperty('--cover', c.toFixed(3));
+  });
   const p = pattern();
   document.getElementById('patOut').textContent = p;
   const reg = REG[p];
@@ -503,7 +508,7 @@ class WhistleProc extends AudioWorkletProcessor {
 registerProcessor('whistle', WhistleProc);
 `;
 
-function message() { return { holes: holes.map((h) => (h ? 0 : 1)), breath }; }
+function message() { return { holes: holes.map((h) => 1 - h), breath }; }   // model wants openness
 function send() { if (node) node.port.postMessage(message()); if (sp) sp.target = message(); }
 
 async function start() {
@@ -543,27 +548,73 @@ async function start() {
 document.getElementById('startBtn').addEventListener('click', start);
 
 // ---------------------------------------------------------------- WARBL (Web MIDI)
-// Config Tool protocol (WARBL2 firmware, Defines.h): CC 102 = 126 on channel 7 enters
-// communication mode; the WARBL then reports hole bitmask on CC 114/115 and pressure
-// on CC 116 (LSB) / 118 (MSB). Bits: 0 bell, 1 R4, 2 R3, 3 R2, 4 R1, 5 L3, 6 L2, 7 L1, 8 thumb.
+// Two ways in, best first:
+//  1. Raw stream (virtual-whistle WARBL2 firmware fork, CC 106 = 79 on channel 7):
+//     SysEx F0 7D 'W' 'R' 01 seq + nine unfiltered hole readings + pressure, every ~2 ms.
+//     Coverage is continuous, so shading and slides reach the model.
+//  2. Stock firmware: Config Tool communication mode (CC 102 = 126). Hole bitmask on
+//     CC 114/115 and pressure on CC 116/118, ~40 per second, holes only open or closed.
+// Firmware hole order: 0 bell, 1 R4, 2 R3, 3 R2, 4 R1, 5 L3, 6 L2, 7 L1, 8 thumb.
 const WHISTLE_BITS = [7, 6, 5, 4, 3, 2];   // whistle holes 1-6 = L1 L2 L3 R1 R2 R3
 let midiOuts = [], ambient = null, msb114 = 0, lsbPressure = 0;
+let rawCal = null, rawAmbient = null, rawSeen = false, uiPending = false;
+const breathGain = 1.0;   // WARBL mouthpiece pressure -> model breath
+function scheduleUi() {
+  if (uiPending) return;
+  uiPending = true;
+  requestAnimationFrame(() => { uiPending = false; update(); document.getElementById('breathOut').textContent = Math.round(breath * 1500) + ' Pa'; level.style.top = ((1 - breath / MAX_BREATH) * 100) + '%'; });
+}
 async function connectMidi() {
   const chip = document.getElementById('midiChip');
   if (!navigator.requestMIDIAccess) { chip.textContent = 'No Web MIDI here'; chip.className = 'chip err'; return; }
   try {
-    const access = await navigator.requestMIDIAccess({ sysex: false });
+    let access;
+    try { access = await navigator.requestMIDIAccess({ sysex: true }); }
+    catch (e) { access = await navigator.requestMIDIAccess({ sysex: false }); }
     midiOuts = [...access.outputs.values()];
     const ins = [...access.inputs.values()];
     if (!ins.length) { chip.textContent = 'No MIDI device found'; chip.className = 'chip err'; return; }
     ins.forEach((inp) => { inp.onmidimessage = onMidi; });
-    midiOuts.forEach((o) => o.send([0xB6, 102, 126]));   // enter communication mode
-    chip.textContent = 'WARBL: ' + (ins[0].name || 'connected'); chip.className = 'chip on';
+    midiOuts.forEach((o) => o.send([0xB6, 106, 79]));          // ask for the raw stream
+    chip.textContent = 'WARBL: waiting'; chip.className = 'chip';
+    setTimeout(() => {
+      if (rawSeen) return;
+      midiOuts.forEach((o) => o.send([0xB6, 102, 126]));       // stock firmware: Config Tool mode
+      chip.textContent = 'WARBL: stock firmware (on/off holes)'; chip.className = 'chip on';
+    }, 600);
     if (!ctx) start();
   } catch (e) { chip.textContent = 'MIDI blocked'; chip.className = 'chip err'; }
 }
+function onRawFrame(d) {
+  // d: full SysEx including F0 ... F7
+  const u14 = (i) => d[i] | (d[i + 1] << 7);
+  if (d[4] === 0x02 && d.length === 29) {          // F0 7D W R 02 format version patch c0..c8 ambient F7
+    rawCal = []; for (let h = 0; h < 9; h++) rawCal.push(Math.max(1, u14(8 + 2 * h)));
+    rawAmbient = u14(26) - 8192;
+    return;
+  }
+  if (d[4] !== 0x01 || d.length !== 27) return;     // F0 7D W R 01 seq h0..h8 p F7
+  if (!rawSeen) {
+    rawSeen = true;
+    const chip = document.getElementById('midiChip'); chip.textContent = 'WARBL: raw stream'; chip.className = 'chip on';
+    if (!rawCal) midiOuts.forEach((o) => o.send([0xB6, 106, 81]));
+  }
+  if (!rawCal) return;
+  WHISTLE_BITS.forEach((bit, i) => {
+    const c = u14(6 + 2 * bit) / rawCal[bit];          // 0 open .. 1 fully covered
+    holes[i] = Math.max(0, Math.min(1, c));
+  });
+  const p = u14(24) - 8192;                            // twelveBitPressure; BMP sensors: 54.6 counts per mbar
+  const pa = Math.max(0, (p - rawAmbient) * 100 / 54.6) * breathGain;
+  breath = Math.min(MAX_BREATH, pa / 1500);
+  send();                                              // to the audio engine every frame
+  scheduleUi();                                        // screen at display rate
+}
 function onMidi(ev) {
-  const [st, d1, d2] = ev.data;
+  const d = ev.data;
+  if (d[0] === 0xF0) { if (d[1] === 0x7D && d[2] === 0x57 && d[3] === 0x52) onRawFrame(d); return; }
+  if (rawSeen) return;
+  const [st, d1, d2] = d;
   if ((st & 0xF0) !== 0xB0 || (st & 0x0F) !== 6) return;   // CCs on channel 7
   if (d1 === 114) msb114 = d2;
   else if (d1 === 115) {
@@ -574,12 +625,12 @@ function onMidi(ev) {
   else if (d1 === 118) {
     const sensor = (d2 << 7) | lsbPressure;              // 10-bit, ~13.65 counts per mbar
     if (ambient === null) ambient = sensor;
-    const pa = Math.max(0, (sensor - ambient) * 100 / 13.65);
+    const pa = Math.max(0, (sensor - ambient) * 100 / 13.65) * breathGain;
     setBreath(pa / 1500);
   }
 }
 document.getElementById('midiBtn').addEventListener('click', connectMidi);
-addEventListener('pagehide', () => midiOuts.forEach((o) => { try { o.send([0xB6, 102, 104]); } catch (e) {} }));
+addEventListener('pagehide', () => midiOuts.forEach((o) => { try { o.send([0xB6, 106, 80]); o.send([0xB6, 102, 104]); } catch (e) {} }));
 
 update();
 setBreath(0);

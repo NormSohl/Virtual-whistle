@@ -1,0 +1,185 @@
+From 541143868427aa652faff513fe0dadd6bfba1123 Mon Sep 17 00:00:00 2001
+From: Norm Sohl <norm@sohl.com>
+Date: Sun, 1 Nov 2026 19:12:55 -0800
+Subject: [PATCH 1/2] Raw-stream mode: unfiltered tonehole readings and breath
+ pressure as SysEx every main-loop pass
+
+CC 106 = 79/80/81 on channel 7: enter / exit / resend calibration.
+Data frame F0 7D 'W' 'R' 01 seq, 9 x 14-bit tonehole readings (baseline-corrected,
+before the adaptive filter), 14-bit pressure, F7. Calibration frame 02 carries the
+full-cover readings and ambient pressure. USB only; normal MIDI output unchanged.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BVn59Fo2GJfXh2PF5NPZ19
+---
+ warbl2_firmware/Defines.h           | 14 ++++-
+ warbl2_firmware/Functions.ino       | 84 +++++++++++++++++++++++++++++
+ warbl2_firmware/warbl2_firmware.ino |  4 ++
+ 3 files changed, 101 insertions(+), 1 deletion(-)
+
+diff --git a/warbl2_firmware/Defines.h b/warbl2_firmware/Defines.h
+index 88245dd..134ae96 100644
+--- a/warbl2_firmware/Defines.h
++++ b/warbl2_firmware/Defines.h
+@@ -665,7 +665,10 @@
+ #define MIDI_CC_106_VALUE_76 76  // from diagnostics page. Exit diagnostic mode
+ #define MIDI_CC_106_VALUE_77 77  // from diagnostics page. Reformat LittleFS
+ #define MIDI_CC_106_VALUE_78 78  // from WARBL. Start of diagnostic data frame
+-/* 79-99 unused -- can be used for WARBL2 */
++#define MIDI_CC_106_VALUE_79 79  // from host. Enter raw-stream mode (virtual-whistle fork)
++#define MIDI_CC_106_VALUE_80 80  // from host. Exit raw-stream mode
++#define MIDI_CC_106_VALUE_81 81  // from host. Re-send raw-stream calibration frame
++/* 82-99 unused -- can be used for WARBL2 */
+ 
+ //Button Actions, see above 102  90/99
+ #define MIDI_CC_106_VALUE_100 100  // Bidirectional. button action 0
+@@ -763,6 +766,15 @@
+ #define MIDI_ENTER_DIAGNOSTIC_MODE MIDI_CC_106_VALUE_75
+ #define MIDI_EXIT_DIAGNOSTIC_MODE MIDI_CC_106_VALUE_76
+ #define MIDI_RESET_LITTLEFS MIDI_CC_106_VALUE_77
++#define MIDI_ENTER_RAW_STREAM MIDI_CC_106_VALUE_79
++#define MIDI_EXIT_RAW_STREAM MIDI_CC_106_VALUE_80
++#define MIDI_RAW_STREAM_CALIBRATION MIDI_CC_106_VALUE_81
++
++// Raw-stream SysEx framing: F0 7D 'W' 'R' <type> ... F7  (0x7D = non-commercial manufacturer ID)
++#define RAW_SYSEX_ID 0x7D
++#define RAW_FRAME_DATA 0x01
++#define RAW_FRAME_CALIBRATION 0x02
++#define RAW_STREAM_FORMAT 1
+ #define MIDI_DIAGNOSTIC_FRAME MIDI_CC_106_VALUE_78
+ 
+ #define MIDI_STICKS_MODE MIDI_CC_111_VALUE_109  // Bidirectional. Hidden sticks mode - Same for 112 and 113
+diff --git a/warbl2_firmware/Functions.ino b/warbl2_firmware/Functions.ino
+index af3e1de..386665f 100644
+--- a/warbl2_firmware/Functions.ino
++++ b/warbl2_firmware/Functions.ino
+@@ -198,6 +198,11 @@ void getSensors(void) {
+ 
+ 
+         for (byte i = 0; i < 9; i++) {
++            // Keep the unfiltered, baseline-corrected reading for raw-stream mode: the
++            // adaptive filter below is right for note detection but lags slow shading.
++            int unf = toneholeRead[i] - (calibration == 0 ? toneholeBaseline[i] : 0);
++            toneholeUnfiltered[i] = unf < 0 ? 0 : unf;
++
+             // Run through adaptive smoothing filter. Takes 50 us.
+             filterToneholes[i].update(toneholeRead[i]);
+             toneholeRead[i] = filterToneholes[i].getValue();
+@@ -1122,6 +1127,68 @@ bool isMaybeInTransition() {
+ 
+ 
+ 
++// ----------------------------------------------------------------------------
++// Raw stream (virtual-whistle fork): every main-loop pass (~2 ms on USB) send one
++// SysEx frame with all nine unfiltered tonehole readings and the breath pressure,
++// so a physical model on the host can treat finger coverage as a continuous signal.
++// USB only: BLE can't carry this rate. Normal MIDI output is unaffected.
++//
++// Data frame (25 bytes incl. F0/F7):
++//   F0 7D 'W' 'R' 01 seq  h0lo h0hi ... h8lo h8hi  plo phi  F7
++//   h0..h8 = holes bell, R4, R3, R2, R1, L3, L2, L1, thumb (0-1023, baseline-corrected, unfiltered)
++//   p = twelveBitPressure + 8192 (14 bits); ambient is in the calibration frame
++// Calibration frame (sent on entry and on request):
++//   F0 7D 'W' 'R' 02 format version patch  c0lo c0hi ... c8lo c8hi  alo ahi F7
++//   c0..c8 = toneholeCovered - toneholeBaseline (reading at full cover), a = sensorCalibration << 2 (+8192)
++
++static inline void raw14(uint8_t* out, int v) {
++    if (v < 0) v = 0;
++    if (v > 16383) v = 16383;
++    out[0] = v & 0x7F;
++    out[1] = (v >> 7) & 0x7F;
++}
++
++void sendRawStream() {
++    static uint8_t seq = 0;
++    if (!rawStreamMode || USBstatus != USB_HOST) {
++        return;
++    }
++    uint8_t frame[4 + 1 + 18 + 2];
++    frame[0] = RAW_SYSEX_ID;
++    frame[1] = 'W';
++    frame[2] = 'R';
++    frame[3] = RAW_FRAME_DATA;
++    frame[4] = seq;
++    seq = (seq + 1) & 0x7F;
++    for (byte i = 0; i < 9; i++) {
++        raw14(&frame[5 + 2 * i], toneholeUnfiltered[i]);
++    }
++    raw14(&frame[23], twelveBitPressure + 8192);
++    MIDI.sendSysEx(sizeof(frame), frame, false);  // false: library adds F0/F7
++}
++
++void sendRawCalibration() {
++    if (USBstatus != USB_HOST) {
++        return;
++    }
++    uint8_t frame[4 + 3 + 18 + 2];
++    frame[0] = RAW_SYSEX_ID;
++    frame[1] = 'W';
++    frame[2] = 'R';
++    frame[3] = RAW_FRAME_CALIBRATION;
++    frame[4] = RAW_STREAM_FORMAT;
++    frame[5] = VERSION & 0x7F;
++    frame[6] = PATCH & 0x7F;
++    for (byte i = 0; i < 9; i++) {
++        raw14(&frame[7 + 2 * i], (int)toneholeCovered[i] - toneholeBaseline[i]);
++    }
++    raw14(&frame[25], (sensorCalibration << 2) + 8192);
++    MIDI.sendSysEx(sizeof(frame), frame, false);
++}
++
++
++
++
+ // Stream data to the standalone WARBL2 diagnostics page.
+ // A frame is sent ~every 50 ms. The frame order is fixed to avoid spending a
+ // selector CC on every individual sensor value.
+@@ -2729,6 +2796,23 @@ void handleControlChange(byte source, byte channel, byte number, byte value) {
+                     sendDiagnosticData(true);
+                 }
+ 
++                else if (value == MIDI_ENTER_RAW_STREAM) {
++                    // Raw-stream mode runs alongside normal playing (notes and CCs keep flowing).
++                    rawStreamMode = 1;
++                    rawStreamSource = source;
++                    useBellSensor = true;
++                    sendRawCalibration();
++                }
++
++                else if (value == MIDI_EXIT_RAW_STREAM) {
++                    rawStreamMode = 0;
++                    rawStreamSource = MIDI_SOURCE_NONE;
++                }
++
++                else if (value == MIDI_RAW_STREAM_CALIBRATION) {
++                    sendRawCalibration();
++                }
++
+                 else if (value == MIDI_EXIT_DIAGNOSTIC_MODE) {
+                     if (diagnosticModeSource == source) {
+                         diagnosticMode = 0;
+diff --git a/warbl2_firmware/warbl2_firmware.ino b/warbl2_firmware/warbl2_firmware.ino
+index e7a2524..c179798 100644
+--- a/warbl2_firmware/warbl2_firmware.ino
++++ b/warbl2_firmware/warbl2_firmware.ino
+@@ -364,6 +364,9 @@ byte communicationModeSource = MIDI_SOURCE_NONE;  // The source of the last MIDI
+ 
+ // Variables for the standalone diagnostics page. Kept separate from Config Tool communication mode.
+ bool diagnosticMode = 0;
++bool rawStreamMode = 0;                                       // Streaming unfiltered tonehole + pressure readings as SysEx (virtual-whistle fork)
++byte rawStreamSource = MIDI_SOURCE_NONE;
++int toneholeUnfiltered[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };     // Baseline-corrected readings before the adaptive smoothing filter
+ byte diagnosticModeSource = MIDI_SOURCE_NONE;
+ int diagnosticRunTimePerCharge = 0;   // Cached EEPROM value, in minutes.
+ byte diagnosticHardwareRevision = 0;  // Cached EEPROM value, e.g. 47 = hardware 4.7.
+@@ -613,6 +616,7 @@ void loop() {
+     getShift();                             // Shift the next note up or down based on register and key.
+     sendNote();                             // Send the note as soon as we know the note, state, and shift.
+     readMIDI();                             // Read incoming MIDI messages.
++    sendRawStream();                        // Raw tonehole/pressure frame for a physical-model host, if raw-stream mode is on.
+ 
+ 
+ 
+-- 
+2.43.0
+

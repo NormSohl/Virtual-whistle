@@ -1,0 +1,32 @@
+From 1babcf4e8a4e1f1a3103be07083e88fc12f64509 Mon Sep 17 00:00:00 2001
+From: Norm Sohl <norm@sohl.com>
+Date: Sun, 1 Nov 2026 19:13:43 -0800
+Subject: [PATCH 2/2] Raw stream: correct frame sizes in comments
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BVn59Fo2GJfXh2PF5NPZ19
+---
+ warbl2_firmware/Functions.ino | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/warbl2_firmware/Functions.ino b/warbl2_firmware/Functions.ino
+index 386665f..2287c38 100644
+--- a/warbl2_firmware/Functions.ino
++++ b/warbl2_firmware/Functions.ino
+@@ -1133,11 +1133,11 @@ bool isMaybeInTransition() {
+ // so a physical model on the host can treat finger coverage as a continuous signal.
+ // USB only: BLE can't carry this rate. Normal MIDI output is unaffected.
+ //
+-// Data frame (25 bytes incl. F0/F7):
++// Data frame (27 bytes incl. F0/F7):
+ //   F0 7D 'W' 'R' 01 seq  h0lo h0hi ... h8lo h8hi  plo phi  F7
+ //   h0..h8 = holes bell, R4, R3, R2, R1, L3, L2, L1, thumb (0-1023, baseline-corrected, unfiltered)
+ //   p = twelveBitPressure + 8192 (14 bits); ambient is in the calibration frame
+-// Calibration frame (sent on entry and on request):
++// Calibration frame (29 bytes incl. F0/F7, sent on entry and on request):
+ //   F0 7D 'W' 'R' 02 format version patch  c0lo c0hi ... c8lo c8hi  alo ahi F7
+ //   c0..c8 = toneholeCovered - toneholeBaseline (reading at full cover), a = sensorCalibration << 2 (+8192)
+ 
+-- 
+2.43.0
+

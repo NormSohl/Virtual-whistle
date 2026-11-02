@@ -22,3 +22,4 @@ One line each: date, decision, reason.
 - 2026-11-01: Fingering changes ramp over ~20 ms (real fingers aren't instantaneous; instantaneous filter switches click).
 - 2026-11-01: Browser version: web/whistle-model.js is a line-for-line JS port of dsp/whistle.hpp (renders the test scale identically: 0.0 cents, 0.0 dB per note); web/play.html runs it in an AudioWorklet at 2x oversampling (96 kHz model on 48 kHz devices) with 15 ms finger and 8 ms breath ramps.
 - 2026-11-01: Jet delay lengthens at a limited rate (0.003 samples/sample): releases stop the note instead of sweeping it through the lower register.
+- 2026-11-01: WARBL raw stream: CC 106 = 79/80/81 on channel 7, 27-byte SysEx frames every main-loop pass with unfiltered hole readings and pressure; calibration frame carries full-cover readings and ambient. Firmware fork based on upstream main 4.8 (runtime BMP/Honeywell detection).
