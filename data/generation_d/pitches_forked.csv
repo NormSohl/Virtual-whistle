@@ -1,0 +1,16 @@
+pattern,register,label,measured_hz,recording_file,start_s,confidence,notes
+xxxxox,1,F# fork (one below),739.8,2026-11-01_halfholes_cnat_sweeps.m4a,98.9,high,"narrated as the lowest forked fingering"
+xxxoxo,1,G one below,788.8,2026-11-01_halfholes_cnat_sweeps.m4a,106.8,medium,"median of 786.1, 786.7, 791.5, 792.2"
+xxxoxx,1,G two below,776.3,2026-11-01_halfholes_cnat_sweeps.m4a,116.3,medium,"median of 780.0, 773.9, 777.2, 774.2"
+xxoxoo,1,A one below,887.0,2026-11-01_halfholes_cnat_sweeps.m4a,130.9,medium,
+xxoxxo,1,A two below,872.7,2026-11-01_halfholes_cnat_sweeps.m4a,139.9,medium,
+xxoxxx,1,A three below,870.0,2026-11-01_halfholes_cnat_sweeps.m4a,147.0,low,"several repeats 869-871; ordering inferred from narration"
+oooooo,1,C# all open,1149.2,2026-11-01_halfholes_cnat_sweeps.m4a,180.4,medium,
+oxoooo,1,C# one below,1123.4,2026-11-01_halfholes_cnat_sweeps.m4a,184.3,medium,
+oxxooo,1,C natural cross fingering (two below),1099.6,2026-11-01_halfholes_cnat_sweeps.m4a,186.1,medium,"1099.8, 1099.4, 1099.8"
+oxxxoo,1,C# three below,1090.0,2026-11-01_halfholes_cnat_sweeps.m4a,190.0,low,"1085.5 and 1094.3"
+oxxxxo,1,C# four below,1079.2,2026-11-01_halfholes_cnat_sweeps.m4a,194.6,low,
+xxxxox,2,F# fork second octave,1474.4,2026-11-01_halfholes_cnat_sweeps.m4a,231.6,high,"narrated as second octave F natural"
+xxxoxo,2,G one below second octave,1575.0,2026-11-01_halfholes_cnat_sweeps.m4a,239.2,medium,"1574.0 and 1576.0"
+xxoxoo,2,A one below second octave,1768.0,2026-11-01_halfholes_cnat_sweeps.m4a,253.7,medium,"1764.7, 1776.4, 1769.0, 1765.4"
+xxoxxo,2,A two below second octave,1730.0,2026-11-01_halfholes_cnat_sweeps.m4a,257.3,medium,"1723.2, 1721.6, 1737.8, 1732.3, 1734.7"

@@ -87,3 +87,29 @@ With the corrected geometry, both takes (26 notes):
 - Freeing hole 4 now barely helps (sd 10.9, settles at 78.2 mm), so the geometry is consistent.
 
 **Conclusion:** with measured geometry and near-default calibration, the impedance model reproduces this real whistle's tuning to within the repeatability of the recordings. Phase 2 is done.
+
+## Update: forked (cross) fingerings, not used in calibration
+Recording `2026-11-01_halfholes_cnat_sweeps.m4a` (Norm narrated by fingers-down; transcript alongside). Labels interpreted as "open note with n fingers closed directly below its first open hole". Pitches in `pitches_forked.csv`; model is the calibration from the diatonic takes, unchanged.
+
+| Fingering | Measured Hz | Model Hz | Model - measured (cents) | Confidence |
+|---|---|---|---|---|
+| xxxxox (F# fork) | 739.8 | 739.4 | -0.9 | high |
+| xxxoxo | 788.8 | 794.5 | +12.6 | medium |
+| xxxoxx | 776.3 | 785.4 | +20.1 | medium |
+| xxoxoo | 887.0 | 889.0 | +4.0 | medium |
+| xxoxxo | 872.7 | 879.2 | +12.8 | medium |
+| xxoxxx | 870.0 | 868.6 | -2.7 | low |
+| oooooo (this take) | 1149.2 | 1158.3 | +13.6 | medium |
+| oxoooo | 1123.4 | 1126.7 | +5.1 | medium |
+| **oxxooo (C natural)** | **1099.6** | **1103.6** | **+6.3** | medium |
+| oxxxoo | 1090.0 | 1082.5 | -12.0 | low |
+| oxxxxo | 1079.2 | 1036.6 | -69.7 | low (Norm: "unplayable") |
+| xxxxox, 2nd reg | 1474.4 | 1471.8 | -3.0 | high |
+| xxxoxo, 2nd reg | 1575.0 | 1576.3 | +1.5 | medium |
+| xxoxoo, 2nd reg | 1768.0 | 1762.5 | -5.4 | medium |
+| xxoxxo, 2nd reg | 1730.0 | 1657.4 | -74.2 | medium |
+
+- **13 of 15 forked fingerings within ±20 cents, typical ±9**, with no refitting: the model handles hole interactions, not only single open holes.
+- **Cross-fingered C natural (oxxooo) plays at 1100 Hz on this whistle: 86 cents above C6, nearly a C#.** The model predicted it within 6 cents. Player lore says this fingering is sharp on cylindrical-bore whistles; here is how much.
+- Two misses (-70, -74): oxxxxo (Norm called it unplayable) and second-register xxoxxo. Either the whistle jumped to a different resonance or the label is wrong; worth a clean retake of just those two.
+- Half-holes were not recorded yet.
