@@ -28,7 +28,7 @@ Free variables: hole positions and sizes (fingers are on the WARBL, so no hand-s
 - For control-only devices, a lookup table from the acoustic model (coverage + breath -> pitch, register) instead of the audio model.
 
 ## Model generalization (needed for the above and for recorders)
-- Hole count per instrument, up to the WARBL's nine sensors (thumb, L1-L3, R1-R4, bell); currently fixed at six in `dsp/whistle.hpp` and `web/whistle-model.js`.
+- Done 2026-11-01: hole count per instrument, up to the WARBL's nine sensors (thumb, L1-L3, R1-R4, bell), in `dsp/whistle.hpp`, `render/render.cpp` (`num_holes`, control columns o1..oN) and `web/whistle-model.js`. Holes are in bore order; the sensor-to-hole mapping belongs to the caller. Generation D renders byte-identical to the six-hole engine (C++ and JS); tests in `tests/test_nine_holes.py`.
 - Page and host mapping for thumb, R4 and bell from the raw stream.
 
 ## Later

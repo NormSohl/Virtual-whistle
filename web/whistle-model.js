@@ -50,35 +50,40 @@ const VW_DEFAULT_SETTINGS = {
   jetStrouhal: 0.2, jetLpOrder: 2, maxPressurePa: 1500, jetDelayRise: 0.003,
 };
 
+const VW_MAX_HOLES = 9;
+
 class VwWhistle {
-  // g: {boreRadius, length, holePos[6], holeRadius[6], chimney[6], windowLength, windowWidth, windowWall, windowScale} (metres)
+  // g: {boreRadius, length, holePos[n], holeRadius[n], chimney[n], windowLength, windowWidth, windowWall, windowScale} (metres)
+  // n = holePos.length, up to 9 (VW_MAX_HOLES), holes in bore order from the window.
   constructor(g, s = {}) {
     this.g = g;
     this.s = Object.assign({}, VW_DEFAULT_SETTINGS, s);
     const S = this.s;
     this.c = 331.3 * Math.sqrt((S.tempC + 273.15) / 273.15) * S.dispersion;
     this.rho = 1.2041 * 293.15 / (S.tempC + 273.15);
-    const x = [0, ...g.holePos, g.length];
+    this.nh = Math.min(VW_MAX_HOLES, g.holePos.length);
+    const x = [0, ...g.holePos.slice(0, this.nh), g.length];
     this.segDelay = []; this.right = []; this.left = [];
-    for (let k = 0; k < 7; k++) {
+    for (let k = 0; k < this.nh + 1; k++) {
       this.segDelay.push((x[k + 1] - x[k]) / this.c * S.sampleRate);
       this.right.push(new VwDelay()); this.left.push(new VwDelay());
     }
     this.jetDelay = new VwDelay();
-    this.holeFilt = Array.from({ length: 6 }, () => new VwBiquad());
-    this.open = new Float64Array(6);
+    this.holeFilt = Array.from({ length: this.nh }, () => new VwBiquad());
+    this.open = new Float64Array(this.nh);
     this.windowFilt = new VwBiquad(); this.footFilt = new VwBiquad();
     this.dc = new VwDc(); this.vWinDc = new VwDc();
     this.leakDc = 0;
     this.breath = 0; this.lastWin = 0; this.jetLp = 0; this.jetLp2 = 0; this.jetLpCoef = 0;
     this.lastTopOut = 0; this.lastSplit = 0; this.lastBreathForLp = -1; this.jdSmooth = 2000;
     this.noise = 22222 >>> 0;
-    this.rOut = new Float64Array(7); this.lOut = new Float64Array(7);
+    this.rOut = new Float64Array(this.nh + 1); this.lOut = new Float64Array(this.nh + 1);
     this.designWindow(); this.designFoot();
-    for (let i = 0; i < 6; i++) this.setOpenness(i, 0, true);
+    for (let i = 0; i < this.nh; i++) this.setOpenness(i, 0, true);
   }
 
   setOpenness(i, o, force = false) {
+    if (i < 0 || i >= this.nh) return;
     o = Math.min(1, Math.max(0, o));
     if (!force && Math.abs(o - this.open[i]) < 1e-4) return;
     this.open[i] = o;
@@ -98,7 +103,7 @@ class VwWhistle {
 
   process() {
     const S = this.s, g = this.g, fs = S.sampleRate;
-    for (let k = 0; k < 7; k++) {
+    for (let k = 0; k < this.nh + 1; k++) {
       this.rOut[k] = this.right[k].read(this.segDelay[k]);
       this.lOut[k] = this.left[k].read(this.segDelay[k]);
     }
@@ -134,13 +139,13 @@ class VwWhistle {
     this.right[0].write(pTopOut);
     this.lastTopOut = pTopOut;
 
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < this.nh; i++) {
       const a = this.rOut[i], b = this.lOut[i + 1];
       const pJ = this.holeFilt[i].process(a + b);
       this.left[i].write(pJ - a);
       this.right[i + 1].write(pJ - b);
     }
-    this.left[6].write(S.footLoss * this.footFilt.process(this.rOut[6]));
+    this.left[this.nh].write(S.footLoss * this.footFilt.process(this.rOut[this.nh]));
 
     const pWin = aTop + pTopOut;
     const out = this.dc.process(pWin - this.lastWin);
@@ -190,4 +195,4 @@ function vwGenerationD() {
   };
 }
 
-if (typeof module !== 'undefined') module.exports = { VwWhistle, vwGenerationD, VW_DEFAULT_SETTINGS };
+if (typeof module !== 'undefined') module.exports = { VwWhistle, vwGenerationD, VW_DEFAULT_SETTINGS, VW_MAX_HOLES };

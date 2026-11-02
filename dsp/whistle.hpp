@@ -115,15 +115,21 @@ private:
 
 // ------------------------------------------------------------- geometry
 
-constexpr int kHoles = 6;
+// Up to nine holes: the WARBL has nine sensors (thumb, L1-L3, R1-R4, bell).
+// Storage is fixed at kMaxHoles (no heap); Geometry::numHoles says how many are used.
+constexpr int kMaxHoles = 9;
 
 struct Geometry {
     // Positions in metres measured from the window (top of the bore) toward the foot.
     float boreRadius = 0.0059f;
     float length = 0.2634f;  // window to foot
-    std::array<float, kHoles> holePos{};     // hole centres, hole 1 nearest the window
-    std::array<float, kHoles> holeRadius{};
-    std::array<float, kHoles> chimney{};     // wall thickness at the hole
+    int numHoles = 6;                         // holes in use, 0..kMaxHoles
+    // Hole centres in bore order (strictly increasing from the window), at least
+    // ~2 samples of travel apart (7 mm at 96 kHz). Which WARBL sensor drives which
+    // hole is the caller's mapping, not part of the acoustics.
+    std::array<float, kMaxHoles> holePos{};
+    std::array<float, kMaxHoles> holeRadius{};
+    std::array<float, kMaxHoles> chimney{};   // wall thickness at the hole
     float windowLength = 0.005f;             // along the axis
     float windowWidth = 0.0077f;
     float windowWall = 0.002f;
@@ -164,15 +170,16 @@ public:
         c_ = 331.3f * std::sqrt((s.tempC + 273.15f) / 273.15f) * s.dispersion;
         rho_ = 1.2041f * 293.15f / (s.tempC + 273.15f);
 
-        // Segment boundaries: window, hole 1..6, foot.
-        float x[kHoles + 2];
+        nh_ = g.numHoles < 0 ? 0 : (g.numHoles > kMaxHoles ? kMaxHoles : g.numHoles);
+        // Segment boundaries: window, holes in bore order, foot.
+        float x[kMaxHoles + 2];
         x[0] = 0.f;
-        for (int i = 0; i < kHoles; ++i) x[i + 1] = g.holePos[i];
-        x[kHoles + 1] = g.length;
+        for (int i = 0; i < nh_; ++i) x[i + 1] = g.holePos[i];
+        x[nh_ + 1] = g.length;
         // Visco-thermal wall loss per segment (Benade: alpha ~ 3e-5 sqrt(f) / r per metre),
         // evaluated at lossRefHz and applied as a broadband gain on each pass.
         const float alpha = s.lossRefHz > 0.f ? 3.0e-5f * std::sqrt(s.lossRefHz) / g.boreRadius : 0.f;
-        for (int k = 0; k < kHoles + 1; ++k) {
+        for (int k = 0; k < nh_ + 1; ++k) {
             segDelay_[k] = (x[k + 1] - x[k]) / c_ * s.sampleRate;
             segGain_[k] = std::exp(-alpha * (x[k + 1] - x[k]));
         }
@@ -186,7 +193,7 @@ public:
 
         designWindow();
         designFoot();
-        for (int i = 0; i < kHoles; ++i) setOpenness(i, 0.f, true);
+        for (int i = 0; i < nh_; ++i) setOpenness(i, 0.f, true);
         noise_ = 22222u;
         jetLp_ = 0.f;
         lastTopOut_ = lastSplit_ = 0.f;
@@ -198,11 +205,14 @@ public:
 
     // 0 = closed by a finger, 1 = fully open. Cheap enough to call every block.
     void setOpenness(int hole, float o, bool force = false) {
+        if (hole < 0 || hole >= nh_) return;
         o = o < 0.f ? 0.f : (o > 1.f ? 1.f : o);
         if (!force && std::fabs(o - open_[hole]) < 1e-4f) return;
         open_[hole] = o;
         designHole(hole);
     }
+
+    int numHoles() const { return nh_; }
 
     // Breath 0..1 (fraction of maxPressurePa).
     void setBreath(float b) { breath_ = b < 0.f ? 0.f : b; }
@@ -211,8 +221,8 @@ public:
         const float fs = s_.sampleRate;
 
         // Read every wave arriving at a boundary this sample.
-        float rOut[kHoles + 1], lOut[kHoles + 1];
-        for (int k = 0; k < kHoles + 1; ++k) {
+        float rOut[kMaxHoles + 1], lOut[kMaxHoles + 1];
+        for (int k = 0; k < nh_ + 1; ++k) {
             rOut[k] = segGain_[k] * right_[k].read(segDelay_[k]);
             lOut[k] = segGain_[k] * left_[k].read(segDelay_[k]);
         }
@@ -293,7 +303,7 @@ public:
         lastTopOut_ = pTopOut;
 
         // Toneholes: shunt junction between segment k-1 and segment k.
-        for (int i = 0; i < kHoles; ++i) {
+        for (int i = 0; i < nh_; ++i) {
             const float a = rOut[i];      // arriving from the window side
             const float b = lOut[i + 1];  // arriving from the foot side
             const float pJ = holeFilt_[i].process(a + b);
@@ -302,7 +312,7 @@ public:
         }
 
         // Foot: unflanged radiation reflectance with lumped losses.
-        left_[kHoles].write(s_.footLoss * footFilt_.process(rOut[kHoles]));
+        left_[nh_].write(s_.footLoss * footFilt_.process(rOut[nh_]));
 
         // Radiated sound ~ rate of change of window pressure. The source
         // strength grows with jet speed and frequency; levelComp evens that out
@@ -400,11 +410,12 @@ private:
     Geometry g_;
     Settings s_;
     float c_ = 343.f, rho_ = 1.2f;
-    std::array<DelayLine<kDelayN>, kHoles + 1> right_{}, left_{};
-    std::array<float, kHoles + 1> segDelay_{};
-    std::array<float, kHoles + 1> segGain_{};
-    std::array<Biquad, kHoles> holeFilt_{};
-    std::array<float, kHoles> open_{};
+    int nh_ = 0;
+    std::array<DelayLine<kDelayN>, kMaxHoles + 1> right_{}, left_{};
+    std::array<float, kMaxHoles + 1> segDelay_{};
+    std::array<float, kMaxHoles + 1> segGain_{};
+    std::array<Biquad, kMaxHoles> holeFilt_{};
+    std::array<float, kMaxHoles> open_{};
     Biquad windowFilt_, footFilt_;
     DelayLine<kDelayN> jetDelay_;
     DcBlock dc_;

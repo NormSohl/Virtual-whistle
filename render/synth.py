@@ -43,6 +43,7 @@ def generation_d_config(**overrides) -> dict:
         "window_length": WINDOW[0], "window_width": WINDOW[1], "window_wall": 2.0,
         "window_scale": window_scale,
     }
+    cfg["num_holes"] = len(w.holes)
     for i, h in enumerate(w.holes, 1):
         cfg[f"hole{i}_pos"] = h.position
         cfg[f"hole{i}_dia"] = h.diameter
@@ -73,7 +74,9 @@ def note_rows(t0: float, pattern: str, breath: float, hold: float, attack: float
 
 
 def write_control(rows: list[list[float]], path: Path) -> None:
-    lines = ["t,o1,o2,o3,o4,o5,o6,breath"] + [",".join(f"{v:.5f}" for v in r) for r in rows]
+    n = len(rows[0]) - 2   # t, o1..oN, breath
+    header = ",".join(["t"] + [f"o{i}" for i in range(1, n + 1)] + ["breath"])
+    lines = [header] + [",".join(f"{v:.5f}" for v in r) for r in rows]
     path.write_text("\n".join(lines) + "\n")
 
 

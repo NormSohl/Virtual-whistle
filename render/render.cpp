@@ -3,8 +3,8 @@
 //   render config.txt control.csv out.wav
 //
 // config.txt: key = value lines (see keys below). Lengths in millimetres.
-// control.csv: header "t,o1,o2,o3,o4,o5,o6,breath" then rows; values are
-// linearly interpolated between rows. o = hole openness 0 (closed) .. 1 (open),
+// control.csv: header "t,o1,...,oN,breath" then rows (N = number of o columns,
+// up to 9, and must match num_holes); values are linearly interpolated between rows. o = hole openness 0 (closed) .. 1 (open),
 // breath 0..1 of max mouth pressure.
 #include <cstdio>
 #include <cstdlib>
@@ -42,15 +42,23 @@ std::map<std::string, double> readConfig(const char* path) {
 
 struct Row {
     double t;
-    float o[vw::kHoles];
+    float o[vw::kMaxHoles];
     float breath;
 };
 
-std::vector<Row> readControl(const char* path) {
+std::vector<Row> readControl(const char* path, int& nCols) {
     std::vector<Row> rows;
     std::ifstream f(path);
     std::string line;
-    std::getline(f, line);  // header
+    std::getline(f, line);  // header: count the o columns
+    nCols = 0;
+    {
+        std::stringstream hs(line);
+        std::string cell;
+        while (std::getline(hs, cell, ','))
+            if (!cell.empty() && cell[0] == 'o') ++nCols;
+    }
+    if (nCols > vw::kMaxHoles) nCols = vw::kMaxHoles;
     while (std::getline(f, line)) {
         if (line.empty()) continue;
         std::stringstream ss(line);
@@ -58,7 +66,7 @@ std::vector<Row> readControl(const char* path) {
         Row r{};
         std::getline(ss, cell, ',');
         r.t = std::atof(cell.c_str());
-        for (int i = 0; i < vw::kHoles; ++i) {
+        for (int i = 0; i < nCols; ++i) {
             std::getline(ss, cell, ',');
             r.o[i] = float(std::atof(cell.c_str()));
         }
@@ -108,7 +116,8 @@ int main(int argc, char** argv) {
     vw::Geometry g;
     g.boreRadius = float(get("bore_diameter", 11.8) / 2 * mm);
     g.length = float(get("length", 263.4) * mm);
-    for (int i = 0; i < vw::kHoles; ++i) {
+    g.numHoles = int(get("num_holes", 6));
+    for (int i = 0; i < g.numHoles && i < vw::kMaxHoles; ++i) {
         char key[32];
         std::snprintf(key, sizeof key, "hole%d_pos", i + 1);
         g.holePos[i] = float(get(key, 0) * mm);
@@ -143,7 +152,12 @@ int main(int argc, char** argv) {
     s.jetCutoffHz = float(get("jet_cutoff_hz", s.jetCutoffHz));
     s.maxPressurePa = float(get("max_pressure_pa", s.maxPressurePa));
 
-    auto rows = readControl(argv[2]);
+    int nCols = 0;
+    auto rows = readControl(argv[2], nCols);
+    if (nCols != g.numHoles) {
+        std::fprintf(stderr, "control file has %d hole columns, config has num_holes = %d\n", nCols, g.numHoles);
+        return 2;
+    }
     if (rows.size() < 2) {
         std::fprintf(stderr, "control file needs at least two rows\n");
         return 2;
@@ -167,7 +181,7 @@ int main(int argc, char** argv) {
             const double span = B.t - A.t;
             const float u = span > 0 ? float((t - A.t) / span) : 0.f;
             const float uc = u < 0 ? 0 : (u > 1 ? 1 : u);
-            for (int h = 0; h < vw::kHoles; ++h) w.setOpenness(h, A.o[h] + (B.o[h] - A.o[h]) * uc);
+            for (int h = 0; h < nCols; ++h) w.setOpenness(h, A.o[h] + (B.o[h] - A.o[h]) * uc);
             w.setBreath(A.breath + (B.breath - A.breath) * uc);
         }
         out[i] = w.process();
