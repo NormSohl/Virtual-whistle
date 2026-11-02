@@ -9,4 +9,4 @@ hole_4,73.75,4.75,4.75,,assumed lower edge to foot; RECHECK - photo shows holes 
 hole_3,100.65,5.1,5.1,,assumed lower edge to foot
 hole_2,124.0,5.75,,,assumed lower edge to foot
 hole_1,145.3,4.45,,,assumed lower edge to foot
-window,,,,,still needed: foot to labium edge, foot to block face, window length and width
+window,,5.0,7.7,,diameter_a = length along the axis ("height" 5 mm), diameter_b = width 7.7 mm; position (foot to labium edge) still needed
