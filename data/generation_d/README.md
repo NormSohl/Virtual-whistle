@@ -25,3 +25,6 @@ Model check with all measured geometry (A4 = 440, 25 °C, no recordings yet):
 - Reference at the labium: mean +16 cents, sd 24. Reference at the window centre: mean -5, sd 21. The model's acoustic top of the bore sits somewhere in the window; calibration against recordings will pin it.
 - Hole 4 as measured (73.75 mm): F# and G come out equally flat (-13, -15 at the labium reference), which looks self-consistent; the even-spaced alternative puts G ~45 cents above F#. Leaning toward the measured value.
 - Remaining outlier: B and C# (top two holes open) sit ~45-60 cents above the rest in both octaves. Either this whistle really plays its top notes sharp, holes 1-2 positions/sizes are off, or the head piece's inner bore differs from the brass. Recordings decide.
+
+## Block / windway exit (2026-11-01)
+Norm: the block is not parallel with the windway mouth and sits at least 1 mm further in than the window's upstream edge; deeper geometry not visible without a borescope. Common on Generation whistles. Effects: longer jet path to the labium (>= 6 mm instead of 5 mm), a small cavity above the window, and possibly an off-axis jet, which would hurt tone and second-octave response. Little effect on the impedance-model pitches (calibration absorbs it); matters for the phase 3 jet model.
