@@ -293,7 +293,10 @@ class WhistleProc extends AudioWorkletProcessor {
       this.w.setOpenness(i, this.cHoles[i]);
     }
     const db = this.tBreath - this.cBreath;
-    this.cBreath += Math.abs(db) <= bStep * Math.max(0.3, this.tBreath) ? db : Math.sign(db) * bStep * Math.max(0.3, this.tBreath);
+    // Up: scaled to the target so second-octave attacks are as quick as low ones. Down: scaled to the
+    // current level, so any release takes ~8 ms (a tongue stop) instead of sliding through the low register.
+    const bs = bStep * Math.max(0.3, db > 0 ? this.tBreath : this.cBreath);
+    this.cBreath += Math.abs(db) <= bs ? db : Math.sign(db) * bs;
     this.w.setBreath(this.cBreath);
     for (let k = 0; k < n; k++) {
       let acc = 0;
@@ -331,7 +334,7 @@ async function start() {
     sp.onaudioprocess = (ev) => {
       const L = ev.outputBuffer.getChannelData(0), R = ev.outputBuffer.getChannelData(1);
       for (let b = 0; b < L.length; b += 32) {
-        const f = 32 / (0.015 * ctx.sampleRate), s = 32 / (0.008 * ctx.sampleRate) * Math.max(0.3, sp.target.breath);
+        const f = 32 / (0.015 * ctx.sampleRate), d0 = sp.target.breath - cur.breath, s = 32 / (0.008 * ctx.sampleRate) * Math.max(0.3, d0 > 0 ? sp.target.breath : cur.breath);
         for (let i = 0; i < 6; i++) { const d = sp.target.holes[i] - cur.holes[i]; cur.holes[i] += Math.abs(d) <= f ? d : Math.sign(d) * f; w.setOpenness(i, cur.holes[i]); }
         const d = sp.target.breath - cur.breath; cur.breath += Math.abs(d) <= s ? d : Math.sign(d) * s; w.setBreath(cur.breath);
         for (let k = b; k < b + 32; k++) { let a = 0; for (let j = 0; j < factor; j++) a += w.process(); const y = Math.tanh(0.0006 * a / factor); L[k] = y; R[k] = y; }

@@ -21,3 +21,4 @@ One line each: date, decision, reason.
 - 2026-11-01: Tongued attacks 8 ms: slow breath ramps start second-octave notes in the first register.
 - 2026-11-01: Fingering changes ramp over ~20 ms (real fingers aren't instantaneous; instantaneous filter switches click).
 - 2026-11-01: Browser version: web/whistle-model.js is a line-for-line JS port of dsp/whistle.hpp (renders the test scale identically: 0.0 cents, 0.0 dB per note); web/play.html runs it in an AudioWorklet at 2x oversampling (96 kHz model on 48 kHz devices) with 15 ms finger and 8 ms breath ramps.
+- 2026-11-01: Jet delay lengthens at a limited rate (0.003 samples/sample): releases stop the note instead of sweeping it through the lower register.

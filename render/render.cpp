@@ -139,6 +139,7 @@ int main(int argc, char** argv) {
     s.vortexLoss = float(get("vortex_loss", s.vortexLoss));
     s.levelComp = float(get("level_comp", s.levelComp));
     s.radiation = get("radiation", 1) != 0;
+    s.jetDelayRise = float(get("jet_delay_rise", s.jetDelayRise));
     s.jetCutoffHz = float(get("jet_cutoff_hz", s.jetCutoffHz));
     s.maxPressurePa = float(get("max_pressure_pa", s.maxPressurePa));
 

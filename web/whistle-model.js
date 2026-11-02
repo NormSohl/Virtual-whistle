@@ -47,7 +47,7 @@ class VwDc {
 const VW_DEFAULT_SETTINGS = {
   sampleRate: 96000, tempC: 30, dispersion: 0.991, footLoss: 1.0, radiation: true,
   jetRatio: 1.0, jetReflection: 1.0, jetGain: -100, noiseGain: 0.002, jetOffset: 0.1,
-  jetStrouhal: 0.2, jetLpOrder: 2, maxPressurePa: 1500,
+  jetStrouhal: 0.2, jetLpOrder: 2, maxPressurePa: 1500, jetDelayRise: 0.003,
 };
 
 class VwWhistle {
@@ -71,7 +71,7 @@ class VwWhistle {
     this.dc = new VwDc(); this.vWinDc = new VwDc();
     this.leakDc = 0;
     this.breath = 0; this.lastWin = 0; this.jetLp = 0; this.jetLp2 = 0; this.jetLpCoef = 0;
-    this.lastTopOut = 0; this.lastSplit = 0; this.lastBreathForLp = -1;
+    this.lastTopOut = 0; this.lastSplit = 0; this.lastBreathForLp = -1; this.jdSmooth = 2000;
     this.noise = 22222 >>> 0;
     this.rOut = new Float64Array(7); this.lOut = new Float64Array(7);
     this.designWindow(); this.designFoot();
@@ -108,6 +108,8 @@ class VwWhistle {
     const convect = 0.4 * (ujet > 1e-3 ? ujet : 1e-3);
     let jd = S.jetRatio * (g.windowLength / convect) * fs;
     jd = jd < 2 ? 2 : (jd > 2000 ? 2000 : jd);
+    if (jd > this.jdSmooth + S.jetDelayRise) jd = this.jdSmooth + S.jetDelayRise;   // see C++
+    this.jdSmooth = jd;
 
     const u = ujet > 0.5 ? ujet : 0.5;
     const vWin = this.vWinDc.process(this.lastTopOut - aTop);

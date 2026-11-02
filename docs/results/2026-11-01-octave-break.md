@@ -110,3 +110,12 @@ Cause: between notes the fingering changed in a single sample while the previous
 
 Fixes: fingers move over 20 ms at the end of each gap; the jet's flow is zero at zero breath; release ramp 30 ms. Onset peaks now 0 to -7 dB relative to steady level on E-A (was +3 to +16).
 in correct register 14/14, mean -1.5, sd 10.2, max 23.0 cents; level spread 22 dB
+
+## Update: clank at note endings (browser version)
+Norm, playing `web/play.html`: a metallic clank at the end of some notes, e.g. second-octave C#; the octave break itself sounds right.
+
+Cause: as breath falls at a release, the jet slows and its delay lengthens, so the note sweeps down through the first-register range before stopping (and the lengthening delay re-reads its own history, a short chirp). The page also let releases from high breath take ~25 ms.
+
+Fixes: the jet delay may shorten at any speed but lengthens at most 0.003 samples per sample (about 30 ms to drop a second-octave delay to first-register length at 96 kHz), so on a quick release the drive reaches zero first and the tube rings down at its own pitch. Releases in the page now take ~8 ms from any level, like a tongue stop.
+
+Release-tail inharmonic energy relative to harmonics (C++ render, 30 ms release): C#' -27 to -42 dB, B' -32 to -43 dB, G' -44 to -53 dB. Scale pitches unchanged (14/14 in register, sd 10.1 cents). JS port re-checked against C++: 0.00 cents, 0.02 dB.

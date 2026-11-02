@@ -149,6 +149,7 @@ struct Settings {
     float jetStrouhal = 0.2f;    // >0: jet lowpass cutoff = jetStrouhal * U / window length
     int jetLpOrder = 2;          // 1 or 2 poles
     float maxPressurePa = 1500.f; // breath 1.0 corresponds to this mouth pressure
+    float jetDelayRise = 0.003f;  // max lengthening of the jet delay, samples per sample (at 96 kHz)
 };
 
 // ------------------------------------------------------------- model
@@ -191,6 +192,7 @@ public:
         lastTopOut_ = lastSplit_ = 0.f;
         lastBreathForLp_ = -1.f;
         jetLp2_ = 0.f;
+        jdSmooth_ = 2000.f;
         jetLpCoef_ = 1.f - std::exp(-2.f * kPi * s.jetCutoffHz / s.sampleRate);
     }
 
@@ -223,6 +225,13 @@ public:
         const float convect = (s_.jetModel == 2 ? 0.4f : 0.5f) * (ujet > 1e-3f ? ujet : 1e-3f);  // disturbance speed
         float jetDelaySamples = s_.jetRatio * (g_.windowLength / convect) * fs;
         jetDelaySamples = jetDelaySamples < 2.f ? 2.f : (jetDelaySamples > 2000.f ? 2000.f : jetDelaySamples);
+        // The jet delay may shorten quickly (attacks reach the second register
+        // at once) but lengthens only at a limited rate. On a quick release the
+        // drive (~ jet speed) falls to zero before the delay sweeps through the
+        // lower register's range, so the note stops instead of dropping through
+        // the first register with a clank. Slow diminuendos still track.
+        if (jetDelaySamples > jdSmooth_ + s_.jetDelayRise) jetDelaySamples = jdSmooth_ + s_.jetDelayRise;
+        jdSmooth_ = jetDelaySamples;
 
         float jet;
         if (s_.jetModel == 0) {
@@ -403,6 +412,7 @@ private:
     float jetLp_ = 0.f, jetLpCoef_ = 0.f;
     float lastTopOut_ = 0.f, lastSplit_ = 0.f, lastBreathForLp_ = -1.f, jetLp2_ = 0.f;
     DcBlock vWinDc_;
+    float jdSmooth_ = 2000.f;
     struct Leak {  // passes AC, lets DC decay with a ~50 ms time constant
         float process(float x) { dc += 0.0002f * (x - dc); return x - 0.0002f * dc; }
         float dc = 0.f;
