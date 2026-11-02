@@ -1,0 +1,773 @@
+<title>Virtual Generation D</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one instrument bench — the whistle body runs across the top, the breath pad and readouts sit below it. */
+:root {
+  --bg: #eef0ee;
+  --panel: #ffffff;
+  --ink: #1f2522;
+  --muted: #5d6762;
+  --line: #cfd5d1;
+  --brass: #a8802f;
+  --brass-hi: #e3c77b;
+  --brass-lo: #6f5216;
+  --head: #d3283c;
+  --hole: #1d1a14;
+  --covered: #2f6f5e;
+  --reg1: #2f6f5e;
+  --reg2: #a8802f;
+  --warn: #b5482a;
+  --display: "Archivo Narrow", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #151917; --panel: #1e2421; --ink: #e7ebe8; --muted: #9aa49f; --line: #333b37;
+    --hole: #0b0c0b; --covered: #57b39a; --reg1: #57b39a; --reg2: #d8b45e; --warn: #e07a5b;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #151917; --panel: #1e2421; --ink: #e7ebe8; --muted: #9aa49f; --line: #333b37;
+  --hole: #0b0c0b; --covered: #57b39a; --reg1: #57b39a; --reg2: #d8b45e; --warn: #e07a5b;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--display); font-size: 16px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 16px;
+  box-sizing: border-box;
+  -webkit-user-select: none; user-select: none;
+  touch-action: manipulation;
+}
+.wrap { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
+h1 { font-size: 1.75rem; font-weight: 700; letter-spacing: 0.01em; margin: 0; text-wrap: balance; }
+.sub { color: var(--muted); font-size: 0.95rem; }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip { font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.04em; text-transform: uppercase;
+  border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; color: var(--muted); background: var(--panel); }
+.chip.on { color: var(--covered); border-color: var(--covered); }
+.chip.err { color: var(--warn); border-color: var(--warn); }
+
+/* Whistle body */
+.whistle { position: relative; display: grid; grid-template-columns: 18% 1fr; align-items: center; height: 92px; }
+.head { height: 64px; background: var(--head); border-radius: 30px 6px 6px 30px; position: relative; }
+.head::after { content: ""; position: absolute; right: 24%; top: 50%; width: 14%; height: 34%; transform: translateY(-50%);
+  background: #5a0d16; border-radius: 3px; }
+.tube { height: 50px; border-radius: 0 10px 10px 0; position: relative;
+  background: linear-gradient(180deg, var(--brass-hi) 0%, var(--brass) 45%, var(--brass-lo) 100%);
+  display: grid; grid-template-columns: 22% repeat(6, 1fr) 10%; align-items: center; justify-items: center; }
+.hole { grid-row: 1; width: 64px; height: 64px; border-radius: 50%; border: none; padding: 0; background: transparent;
+  display: grid; place-items: center; cursor: pointer; position: relative; }
+.hole::before { content: ""; width: 26px; height: 26px; border-radius: 50%; background: var(--hole);
+  box-shadow: inset 0 3px 4px rgba(0,0,0,.6); transition: transform .08s; }
+.hole.covered::before { background: var(--covered); box-shadow: 0 0 0 5px color-mix(in srgb, var(--covered) 35%, transparent); transform: scale(1.15); }
+.hole.half::before { background: linear-gradient(90deg, var(--covered) 50%, var(--hole) 50%); }
+.hole:focus-visible { outline: 3px solid var(--ink); outline-offset: -6px; border-radius: 50%; }
+.hole span { position: absolute; bottom: -18px; font-family: var(--mono); font-size: 0.7rem; color: var(--muted); }
+
+/* Controls */
+.bench { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 16px; }
+@media (max-width: 720px) { .bench { grid-template-columns: 1fr; } .whistle { grid-template-columns: 14% 1fr; } .hole { width: 44px; height: 44px; } }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.panel h2 { margin: 0; font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.notes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+button.key { font-family: var(--display); font-size: 1.1rem; font-weight: 600; padding: 10px 0; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer; }
+button.key.active { border-color: var(--covered); color: var(--covered); }
+button.key:focus-visible, .btn:focus-visible { outline: 3px solid var(--covered); outline-offset: 2px; }
+.btn { font-family: var(--display); font-size: 1rem; font-weight: 600; padding: 10px 16px; border-radius: 8px;
+  border: 1px solid var(--ink); background: var(--ink); color: var(--panel); cursor: pointer; }
+.btn.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.readout { font-family: var(--mono); font-variant-numeric: tabular-nums; display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 0.9rem; }
+.readout dt { color: var(--muted); }
+.readout dd { margin: 0; }
+.big { font-family: var(--display); font-size: 2.6rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+
+/* Breath pad: x = time, y = pressure. Bands show where this fingering speaks each register. */
+.pad { position: relative; height: 260px; border-radius: 10px; border: 1px solid var(--line); overflow: hidden; touch-action: none; cursor: crosshair; background: var(--bg); }
+.pad .band { position: absolute; left: 0; right: 0; }
+.pad .band.r1 { background: color-mix(in srgb, var(--reg1) 22%, transparent); }
+.pad .band.r2 { background: color-mix(in srgb, var(--reg2) 26%, transparent); }
+.pad .lbl { position: absolute; left: 8px; font-family: var(--mono); font-size: 0.7rem; color: var(--muted); }
+.pad .level { position: absolute; left: 0; right: 0; height: 2px; background: var(--ink); opacity: 0; transition: opacity .1s; }
+.pad.blowing .level { opacity: 1; }
+.pad .hint { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 0.95rem; pointer-events: none; text-align: center; padding: 16px; }
+.pad.blowing .hint { opacity: 0; }
+.note { color: var(--muted); font-size: 0.9rem; line-height: 1.45; max-width: 65ch; }
+.note b { color: var(--ink); font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Virtual Generation D</h1>
+      <div class="sub">Physical model of Norm's whistle, tuned from calipers and two recordings</div>
+    </div>
+    <div class="chips">
+      <span class="chip" id="audioChip">Audio off</span>
+      <span class="chip" id="midiChip">WARBL not connected</span>
+    </div>
+  </header>
+
+  <div class="whistle" aria-label="Whistle body. Tap a hole to cover or uncover it.">
+    <div class="head" aria-hidden="true"></div>
+    <div class="tube" id="tube">
+      <!-- holes 1-6 from the mouthpiece, placed in grid columns 2-7 -->
+    </div>
+  </div>
+
+  <div class="bench">
+    <section class="panel">
+      <h2>Fingering</h2>
+      <div class="notes" id="notes"></div>
+      <div class="row">
+        <button class="btn" id="startBtn" type="button">Start sound</button>
+        <button class="btn ghost" id="midiBtn" type="button">Connect WARBL</button>
+      </div>
+      <dl class="readout">
+        <dt>Fingering</dt><dd id="patOut">xxxxxx</dd>
+        <dt>Breath</dt><dd id="breathOut">0 Pa</dd>
+        <dt>Engine</dt><dd id="engineOut">not started</dd>
+      </dl>
+      <p class="note" id="midiNote"><b>WARBL:</b> needs a browser with Web MIDI. Safari on iPad has none, so inside the Claude app play with touch. Chrome on the Mac works, and so does this page opened in an iPad Web MIDI browser.</p>
+    </section>
+
+    <section class="panel">
+      <div class="row" style="justify-content: space-between;">
+        <h2>Breath</h2>
+        <div class="big" id="noteOut" aria-live="polite">D</div>
+      </div>
+      <div class="pad" id="pad" role="slider" aria-label="Breath pressure: press and hold, higher is harder" aria-valuemin="0" aria-valuemax="1800" aria-valuenow="0" tabindex="0">
+        <div class="hint">Press and hold to blow.<br>Higher on the pad is harder.</div>
+        <div class="level" id="level"></div>
+      </div>
+      <p class="note">Green band: this fingering's first register. Brass band: its second register. Bands come from the model's own register map, so blowing into the brass band overblows the octave, as on the real whistle.</p>
+    </section>
+  </div>
+</div>
+
+<script>
+// JavaScript port of dsp/whistle.hpp (physical flue jet, model 2, with radiation).
+// Kept line-for-line close to the C++ so the two can be checked against each
+// other (tests/test_js_port.py renders the same control script with both).
+// Runs in Node (verification) and inside an AudioWorklet (web/play.html).
+
+class VwDelay {
+  constructor(n = 4096) { this.n = n; this.mask = n - 1; this.buf = new Float64Array(n); this.w = 0; }
+  write(x) { this.buf[this.w] = x; this.w = (this.w + 1) & this.mask; }
+  tap(d) { return this.buf[(this.w - d) & this.mask]; }
+  read(d) {
+    if (d < 2) d = 2;
+    if (d > this.n - 3) d = this.n - 3;
+    const di = Math.floor(d), D = d - di + 1;
+    const h0 = -(D - 1) * (D - 2) * (D - 3) / 6, h1 = D * (D - 2) * (D - 3) / 2;
+    const h2 = -D * (D - 1) * (D - 3) / 2, h3 = D * (D - 1) * (D - 2) / 6;
+    return h0 * this.tap(di - 1) + h1 * this.tap(di) + h2 * this.tap(di + 1) + h3 * this.tap(di + 2);
+  }
+}
+
+class VwBiquad {
+  constructor() { this.b0 = 1; this.b1 = 0; this.b2 = 0; this.a1 = 0; this.a2 = 0; this.s1 = 0; this.s2 = 0; }
+  setAnalog(b0, b1, b2, a0, a1, a2, fs) {
+    const K = 2 * fs, K2 = K * K;
+    if (b2 === 0 && a2 === 0) {
+      const A0 = a0 + a1 * K;
+      this.b0 = (b0 + b1 * K) / A0; this.b1 = (b0 - b1 * K) / A0; this.b2 = 0;
+      this.a1 = (a0 - a1 * K) / A0; this.a2 = 0;
+      return;
+    }
+    const B0 = b0 + b1 * K + b2 * K2, B1 = 2 * b0 - 2 * b2 * K2, B2 = b0 - b1 * K + b2 * K2;
+    const A0 = a0 + a1 * K + a2 * K2, A1 = 2 * a0 - 2 * a2 * K2, A2 = a0 - a1 * K + a2 * K2;
+    this.b0 = B0 / A0; this.b1 = B1 / A0; this.b2 = B2 / A0; this.a1 = A1 / A0; this.a2 = A2 / A0;
+  }
+  process(x) {
+    const y = this.b0 * x + this.s1;
+    this.s1 = this.b1 * x - this.a1 * y + this.s2;
+    this.s2 = this.b2 * x - this.a2 * y;
+    return y;
+  }
+}
+
+class VwDc {
+  constructor() { this.x1 = 0; this.y1 = 0; }
+  process(x) { const y = x - this.x1 + 0.995 * this.y1; this.x1 = x; this.y1 = y; return y; }
+}
+
+const VW_DEFAULT_SETTINGS = {
+  sampleRate: 96000, tempC: 30, dispersion: 0.991, footLoss: 1.0, radiation: true,
+  jetRatio: 1.0, jetReflection: 1.0, jetGain: -100, noiseGain: 0.002, jetOffset: 0.1,
+  jetStrouhal: 0.2, jetLpOrder: 2, maxPressurePa: 1500,
+};
+
+class VwWhistle {
+  // g: {boreRadius, length, holePos[6], holeRadius[6], chimney[6], windowLength, windowWidth, windowWall, windowScale} (metres)
+  constructor(g, s = {}) {
+    this.g = g;
+    this.s = Object.assign({}, VW_DEFAULT_SETTINGS, s);
+    const S = this.s;
+    this.c = 331.3 * Math.sqrt((S.tempC + 273.15) / 273.15) * S.dispersion;
+    this.rho = 1.2041 * 293.15 / (S.tempC + 273.15);
+    const x = [0, ...g.holePos, g.length];
+    this.segDelay = []; this.right = []; this.left = [];
+    for (let k = 0; k < 7; k++) {
+      this.segDelay.push((x[k + 1] - x[k]) / this.c * S.sampleRate);
+      this.right.push(new VwDelay()); this.left.push(new VwDelay());
+    }
+    this.jetDelay = new VwDelay();
+    this.holeFilt = Array.from({ length: 6 }, () => new VwBiquad());
+    this.open = new Float64Array(6);
+    this.windowFilt = new VwBiquad(); this.footFilt = new VwBiquad();
+    this.dc = new VwDc(); this.vWinDc = new VwDc();
+    this.leakDc = 0;
+    this.breath = 0; this.lastWin = 0; this.jetLp = 0; this.jetLp2 = 0; this.jetLpCoef = 0;
+    this.lastTopOut = 0; this.lastSplit = 0; this.lastBreathForLp = -1;
+    this.noise = 22222 >>> 0;
+    this.rOut = new Float64Array(7); this.lOut = new Float64Array(7);
+    this.designWindow(); this.designFoot();
+    for (let i = 0; i < 6; i++) this.setOpenness(i, 0, true);
+  }
+
+  setOpenness(i, o, force = false) {
+    o = Math.min(1, Math.max(0, o));
+    if (!force && Math.abs(o - this.open[i]) < 1e-4) return;
+    this.open[i] = o;
+    this.designHole(i);
+  }
+
+  setBreath(b) { this.breath = b < 0 ? 0 : b; }
+
+  white() {
+    let n = this.noise;
+    n ^= n << 13; n >>>= 0;
+    n ^= n >>> 17;
+    n ^= n << 5; n >>>= 0;
+    this.noise = n;
+    return n * (2 / 4294967295) - 1;
+  }
+
+  process() {
+    const S = this.s, g = this.g, fs = S.sampleRate;
+    for (let k = 0; k < 7; k++) {
+      this.rOut[k] = this.right[k].read(this.segDelay[k]);
+      this.lOut[k] = this.left[k].read(this.segDelay[k]);
+    }
+    const aTop = this.lOut[0];
+    const pressurePa = this.breath * S.maxPressurePa;
+    const ujet = Math.sqrt(2 * pressurePa / this.rho);
+    const convect = 0.4 * (ujet > 1e-3 ? ujet : 1e-3);
+    let jd = S.jetRatio * (g.windowLength / convect) * fs;
+    jd = jd < 2 ? 2 : (jd > 2000 ? 2000 : jd);
+
+    const u = ujet > 0.5 ? ujet : 0.5;
+    const vWin = this.vWinDc.process(this.lastTopOut - aTop);
+    this.jetDelay.write(S.jetReflection * vWin / u + S.noiseGain * this.white());
+    const F = Math.tanh(this.jetDelay.read(jd) + S.jetOffset);
+    let jet = S.jetGain * ujet * (F - this.lastSplit);
+    this.lastSplit = F;
+
+    if (S.jetStrouhal > 0 && this.breath !== this.lastBreathForLp) {
+      const fc = S.jetStrouhal * u / g.windowLength;
+      this.jetLpCoef = 1 - Math.exp(-2 * Math.PI * Math.min(fc, 0.45 * fs) / fs);
+      this.lastBreathForLp = this.breath;
+    }
+    this.jetLp += this.jetLpCoef * (jet - this.jetLp);
+    this.jetLp2 += this.jetLpCoef * (this.jetLp - this.jetLp2);
+    jet = S.jetLpOrder >= 2 ? this.jetLp2 : this.jetLp;
+
+    let w = this.windowFilt.process(aTop);
+    this.leakDc += 0.0002 * (w - this.leakDc);
+    w -= 0.0002 * this.leakDc;
+    const pTopOut = w + jet;
+    this.right[0].write(pTopOut);
+    this.lastTopOut = pTopOut;
+
+    for (let i = 0; i < 6; i++) {
+      const a = this.rOut[i], b = this.lOut[i + 1];
+      const pJ = this.holeFilt[i].process(a + b);
+      this.left[i].write(pJ - a);
+      this.right[i + 1].write(pJ - b);
+    }
+    this.left[6].write(S.footLoss * this.footFilt.process(this.rOut[6]));
+
+    const pWin = aTop + pTopOut;
+    const out = this.dc.process(pWin - this.lastWin);
+    this.lastWin = pWin;
+    return out;
+  }
+
+  designHole(i) {
+    const o = this.open[i], g = this.g, c = this.c, fs = this.s.sampleRate;
+    const a = g.boreRadius, b = g.holeRadius[i], t = g.chimney[i];
+    const Sb = Math.PI * a * a, Sh = Math.PI * b * b;
+    const ti = (br) => { const d = br / a; return br * (0.82 - 0.193 * d - 1.09 * d * d + 1.27 * d ** 3 - 0.71 * d ** 4); };
+    const tauC = (Sh / Sb) * (t + ti(b)) / c;
+    if (o <= 1e-4) { this.holeFilt[i].setAnalog(1, 0, 0, 1, tauC / 2, 0, fs); return; }
+    const bo = b * Math.sqrt(o), So = Math.PI * bo * bo;
+    const A = So / Sb, tauI = (t + ti(bo)) / c, tauR = 0.61 * bo / c;
+    const t1 = tauI + tauR, t2 = tauI * tauR;
+    this.holeFilt[i].setAnalog(0, 2 * t1, 2 * t2, A, 2 * t1 + A * tauR, 2 * t2 + (1 - o) * tauC * t1, fs);
+  }
+
+  designWindow() {
+    const g = this.g, c = this.c, fs = this.s.sampleRate;
+    const Sb = Math.PI * g.boreRadius ** 2, Sw = g.windowLength * g.windowWidth;
+    const rw = Math.sqrt(Sw / Math.PI);
+    const le = g.windowScale * (g.windowWall + 1.7 * rw);
+    const B = Sb / Sw, tauWr = 0.61 * rw / c, tauWi = le / c - tauWr;
+    const w1 = tauWi + tauWr, w2 = tauWi * tauWr;
+    this.windowFilt.setAnalog(-1, B * w1 - tauWr, B * w2, 1, B * w1 + tauWr, B * w2, fs);
+  }
+
+  designFoot() {
+    const a = this.g.boreRadius, c = this.c;
+    const tl = a / c, tauA = 0.1133 * a / c;
+    this.footFilt.setAnalog(-1, tauA, 0, 1, tauA + tl, tauA * tl, this.s.sampleRate);
+  }
+}
+
+// Norm's Generation D, from the calibrated impedance model (render/synth.py generation_d_config).
+function vwGenerationD() {
+  const top = 263.4, edge = [144.65, 123.6, 100.65, 79.5, 60.15, 35.0], dia = [4.45, 5.8, 5.1, 4.75, 6.0, 6.0];
+  return {
+    boreRadius: 11.8 / 2 / 1000, length: top / 1000,
+    holePos: edge.map((e, i) => (top - (e + dia[i] / 2)) / 1000),
+    holeRadius: dia.map((d) => d / 2 / 1000),
+    chimney: dia.map(() => 0.4 / 1000),
+    windowLength: 5.0 / 1000, windowWidth: 7.7 / 1000, windowWall: 2.0 / 1000, windowScale: 0.92,
+  };
+}
+
+if (typeof module !== 'undefined') module.exports = { VwWhistle, vwGenerationD, VW_DEFAULT_SETTINGS };
+
+
+// ---------------------------------------------------------------- data
+// Register map (breath as fraction of 1500 Pa) from docs/results/2026-11-01-octave-break.md.
+const REG = {
+  'xxxxxx': [[0.05, 0.15], [0.20, 0.50]],
+  'xxxxxo': [[0.10, 0.20], [0.25, 0.60]],
+  'xxxxoo': [[0.10, 0.25], [0.30, 0.80]],
+  'xxxooo': [[0.10, 0.25], [0.30, 0.90]],
+  'xxoooo': [[0.10, 0.35], [0.40, 1.10]],
+  'xooooo': [[0.15, 0.45], [0.50, 1.25]],
+  'oooooo': [[0.15, 0.50], [0.55, 1.25]],
+  'oxxxxx': [null, [0.25, 0.60]],
+};
+const NOTES = [
+  ['D', 'xxxxxx'], ['E', 'xxxxxo'], ['F#', 'xxxxoo'], ['G', 'xxxooo'],
+  ['A', 'xxoooo'], ['B', 'xooooo'], ['C#', 'oooooo'], ["D'", 'oxxxxx'],
+];
+const NAME = Object.fromEntries(NOTES.map(([n, p]) => [p, n]));
+const MAX_BREATH = 1.25;      // pad top, as a fraction of 1500 Pa
+
+// ---------------------------------------------------------------- state
+const holes = [0, 0, 0, 0, 0, 0];   // 1 = covered
+let breath = 0;
+let ctx = null, node = null, sp = null;
+
+// ---------------------------------------------------------------- UI
+const tube = document.getElementById('tube');
+const holeEls = holes.map((_, i) => {
+  const b = document.createElement('button');
+  b.className = 'hole covered';
+  b.type = 'button';
+  b.id = 'hole' + (i + 1);
+  b.style.gridColumn = String(i + 2);
+  b.setAttribute('aria-label', 'Hole ' + (i + 1));
+  b.innerHTML = '<span>' + (i + 1) + '</span>';
+  b.addEventListener('pointerdown', (e) => { e.preventDefault(); holes[i] = holes[i] ? 0 : 1; update(); });
+  b.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); holes[i] = holes[i] ? 0 : 1; update(); } });
+  tube.appendChild(b);
+  return b;
+});
+holes.fill(1);
+
+const notesEl = document.getElementById('notes');
+const keyEls = NOTES.map(([n, p]) => {
+  const b = document.createElement('button');
+  b.className = 'key'; b.type = 'button'; b.textContent = n; b.id = 'key-' + n.replace("'", '2').replace('#', 's');
+  b.addEventListener('click', () => { [...p].forEach((c, i) => holes[i] = c === 'x' ? 1 : 0); update(); });
+  notesEl.appendChild(b);
+  return [b, p];
+});
+
+const pad = document.getElementById('pad');
+const level = document.getElementById('level');
+function pattern() { return holes.map((h) => (h ? 'x' : 'o')).join(''); }
+
+function drawBands() {
+  pad.querySelectorAll('.band, .lbl').forEach((e) => e.remove());
+  const r = REG[pattern()];
+  if (!r) return;
+  r.forEach((range, k) => {
+    if (!range) return;
+    const [lo, hi] = range;
+    const top = (1 - Math.min(hi, MAX_BREATH) / MAX_BREATH) * 100, bottom = (1 - lo / MAX_BREATH) * 100;
+    const d = document.createElement('div');
+    d.className = 'band r' + (k + 1);
+    d.style.top = top + '%'; d.style.height = (bottom - top) + '%';
+    pad.insertBefore(d, pad.firstChild);
+    const l = document.createElement('div');
+    l.className = 'lbl'; l.style.top = 'calc(' + top + '% + 4px)';
+    l.textContent = (k ? '2nd register' : '1st register') + '  ' + Math.round(lo * 1500) + '-' + Math.round(hi * 1500) + ' Pa';
+    pad.insertBefore(l, pad.firstChild);
+  });
+}
+
+function update() {
+  holeEls.forEach((el, i) => el.classList.toggle('covered', !!holes[i]));
+  const p = pattern();
+  document.getElementById('patOut').textContent = p;
+  const reg = REG[p];
+  let name = NAME[p] || '–';
+  if (reg && breath > 0 && reg[1] && breath >= reg[1][0] && name !== "D'") name = name + "'";
+  document.getElementById('noteOut').textContent = name;
+  keyEls.forEach(([b, kp]) => b.classList.toggle('active', kp === p));
+  drawBands();
+  send();
+}
+
+function setBreath(b) {
+  breath = Math.max(0, Math.min(MAX_BREATH, b));
+  document.getElementById('breathOut').textContent = Math.round(breath * 1500) + ' Pa';
+  pad.setAttribute('aria-valuenow', String(Math.round(breath * 1500)));
+  level.style.top = ((1 - breath / MAX_BREATH) * 100) + '%';
+  update();
+}
+
+let padPointer = null;
+function padAt(e) {
+  const r = pad.getBoundingClientRect();
+  setBreath((1 - (e.clientY - r.top) / r.height) * MAX_BREATH);
+}
+pad.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  if (!ctx) start();
+  padPointer = e.pointerId; pad.setPointerCapture(e.pointerId); pad.classList.add('blowing'); padAt(e);
+});
+pad.addEventListener('pointermove', (e) => { if (e.pointerId === padPointer) padAt(e); });
+const endPad = (e) => { if (e.pointerId === padPointer) { padPointer = null; pad.classList.remove('blowing'); setBreath(0); } };
+pad.addEventListener('pointerup', endPad);
+pad.addEventListener('pointercancel', endPad);
+pad.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowUp') { if (!ctx) start(); pad.classList.add('blowing'); setBreath(breath + 0.05); e.preventDefault(); }
+  if (e.key === 'ArrowDown') { setBreath(breath - 0.05); if (breath === 0) pad.classList.remove('blowing'); e.preventDefault(); }
+});
+
+// ---------------------------------------------------------------- audio
+const PROC = `
+class WhistleProc extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.factor = Math.max(1, Math.round(96000 / sampleRate));
+    this.w = new VwWhistle(vwGenerationD(), { sampleRate: sampleRate * this.factor });
+    this.tHoles = [0,0,0,0,0,0]; this.cHoles = [0,0,0,0,0,0];
+    this.tBreath = 0; this.cBreath = 0;
+    this.gain = 0.0006;   // raw model peaks ~1100 at full second-octave breath
+    this.port.onmessage = (e) => { this.tHoles = e.data.holes; this.tBreath = e.data.breath; };
+  }
+  process(inputs, outputs) {
+    const out = outputs[0][0];
+    const n = out.length;
+    // Fingers move over ~15 ms and breath over ~8 ms: instant changes click.
+    const fStep = n / (0.015 * sampleRate), bStep = n / (0.008 * sampleRate);
+    for (let i = 0; i < 6; i++) {
+      const d = this.tHoles[i] - this.cHoles[i];
+      this.cHoles[i] += Math.abs(d) <= fStep ? d : Math.sign(d) * fStep;
+      this.w.setOpenness(i, this.cHoles[i]);
+    }
+    const db = this.tBreath - this.cBreath;
+    this.cBreath += Math.abs(db) <= bStep * Math.max(0.3, this.tBreath) ? db : Math.sign(db) * bStep * Math.max(0.3, this.tBreath);
+    this.w.setBreath(this.cBreath);
+    for (let k = 0; k < n; k++) {
+      let acc = 0;
+      for (let j = 0; j < this.factor; j++) acc += this.w.process();
+      out[k] = Math.tanh(this.gain * acc / this.factor);   // soft limit
+    }
+    for (let c = 1; c < outputs[0].length; c++) outputs[0][c].set(out);
+    return true;
+  }
+}
+registerProcessor('whistle', WhistleProc);
+`;
+
+function message() { return { holes: holes.map((h) => (h ? 0 : 1)), breath }; }
+function send() { if (node) node.port.postMessage(message()); if (sp) sp.target = message(); }
+
+async function start() {
+  if (ctx) { if (ctx.state === 'suspended') await ctx.resume(); return; }
+  const chip = document.getElementById('audioChip');
+  ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+  const modelSrc = document.getElementById('modelSrc').textContent;
+  try {
+    const url = URL.createObjectURL(new Blob([modelSrc + '\n' + PROC], { type: 'application/javascript' }));
+    await ctx.audioWorklet.addModule(url);
+    node = new AudioWorkletNode(ctx, 'whistle', { outputChannelCount: [2] });
+    node.connect(ctx.destination);
+    document.getElementById('engineOut').textContent = 'AudioWorklet, ' + ctx.sampleRate + ' Hz (model at ' + Math.round(96000 / ctx.sampleRate) * ctx.sampleRate + ' Hz)';
+  } catch (err) {
+    // Fallback where worklets are blocked: ScriptProcessor running the same model.
+    const factor = Math.max(1, Math.round(96000 / ctx.sampleRate));
+    const w = new VwWhistle(vwGenerationD(), { sampleRate: ctx.sampleRate * factor });
+    sp = ctx.createScriptProcessor(512, 0, 2);
+    sp.target = message();
+    const cur = { holes: [0, 0, 0, 0, 0, 0], breath: 0 };
+    sp.onaudioprocess = (ev) => {
+      const L = ev.outputBuffer.getChannelData(0), R = ev.outputBuffer.getChannelData(1);
+      for (let b = 0; b < L.length; b += 32) {
+        const f = 32 / (0.015 * ctx.sampleRate), s = 32 / (0.008 * ctx.sampleRate) * Math.max(0.3, sp.target.breath);
+        for (let i = 0; i < 6; i++) { const d = sp.target.holes[i] - cur.holes[i]; cur.holes[i] += Math.abs(d) <= f ? d : Math.sign(d) * f; w.setOpenness(i, cur.holes[i]); }
+        const d = sp.target.breath - cur.breath; cur.breath += Math.abs(d) <= s ? d : Math.sign(d) * s; w.setBreath(cur.breath);
+        for (let k = b; k < b + 32; k++) { let a = 0; for (let j = 0; j < factor; j++) a += w.process(); const y = Math.tanh(0.0006 * a / factor); L[k] = y; R[k] = y; }
+      }
+    };
+    sp.connect(ctx.destination);
+    document.getElementById('engineOut').textContent = 'ScriptProcessor fallback, ' + ctx.sampleRate + ' Hz';
+  }
+  chip.textContent = 'Audio on'; chip.className = 'chip on';
+  document.getElementById('startBtn').textContent = 'Sound on';
+  send();
+}
+document.getElementById('startBtn').addEventListener('click', start);
+
+// ---------------------------------------------------------------- WARBL (Web MIDI)
+// Config Tool protocol (WARBL2 firmware, Defines.h): CC 102 = 126 on channel 7 enters
+// communication mode; the WARBL then reports hole bitmask on CC 114/115 and pressure
+// on CC 116 (LSB) / 118 (MSB). Bits: 0 bell, 1 R4, 2 R3, 3 R2, 4 R1, 5 L3, 6 L2, 7 L1, 8 thumb.
+const WHISTLE_BITS = [7, 6, 5, 4, 3, 2];   // whistle holes 1-6 = L1 L2 L3 R1 R2 R3
+let midiOuts = [], ambient = null, msb114 = 0, lsbPressure = 0;
+async function connectMidi() {
+  const chip = document.getElementById('midiChip');
+  if (!navigator.requestMIDIAccess) { chip.textContent = 'No Web MIDI here'; chip.className = 'chip err'; return; }
+  try {
+    const access = await navigator.requestMIDIAccess({ sysex: false });
+    midiOuts = [...access.outputs.values()];
+    const ins = [...access.inputs.values()];
+    if (!ins.length) { chip.textContent = 'No MIDI device found'; chip.className = 'chip err'; return; }
+    ins.forEach((inp) => { inp.onmidimessage = onMidi; });
+    midiOuts.forEach((o) => o.send([0xB6, 102, 126]));   // enter communication mode
+    chip.textContent = 'WARBL: ' + (ins[0].name || 'connected'); chip.className = 'chip on';
+    if (!ctx) start();
+  } catch (e) { chip.textContent = 'MIDI blocked'; chip.className = 'chip err'; }
+}
+function onMidi(ev) {
+  const [st, d1, d2] = ev.data;
+  if ((st & 0xF0) !== 0xB0 || (st & 0x0F) !== 6) return;   // CCs on channel 7
+  if (d1 === 114) msb114 = d2;
+  else if (d1 === 115) {
+    const covered = (msb114 << 7) | d2;
+    WHISTLE_BITS.forEach((bit, i) => { holes[i] = (covered >> bit) & 1; });
+    update();
+  } else if (d1 === 116) lsbPressure = d2;
+  else if (d1 === 118) {
+    const sensor = (d2 << 7) | lsbPressure;              // 10-bit, ~13.65 counts per mbar
+    if (ambient === null) ambient = sensor;
+    const pa = Math.max(0, (sensor - ambient) * 100 / 13.65);
+    setBreath(pa / 1500);
+  }
+}
+document.getElementById('midiBtn').addEventListener('click', connectMidi);
+addEventListener('pagehide', () => midiOuts.forEach((o) => { try { o.send([0xB6, 102, 104]); } catch (e) {} }));
+
+update();
+setBreath(0);
+</script>
+<script type="text/plain" id="modelSrc">// JavaScript port of dsp/whistle.hpp (physical flue jet, model 2, with radiation).
+// Kept line-for-line close to the C++ so the two can be checked against each
+// other (tests/test_js_port.py renders the same control script with both).
+// Runs in Node (verification) and inside an AudioWorklet (web/play.html).
+
+class VwDelay {
+  constructor(n = 4096) { this.n = n; this.mask = n - 1; this.buf = new Float64Array(n); this.w = 0; }
+  write(x) { this.buf[this.w] = x; this.w = (this.w + 1) & this.mask; }
+  tap(d) { return this.buf[(this.w - d) & this.mask]; }
+  read(d) {
+    if (d < 2) d = 2;
+    if (d > this.n - 3) d = this.n - 3;
+    const di = Math.floor(d), D = d - di + 1;
+    const h0 = -(D - 1) * (D - 2) * (D - 3) / 6, h1 = D * (D - 2) * (D - 3) / 2;
+    const h2 = -D * (D - 1) * (D - 3) / 2, h3 = D * (D - 1) * (D - 2) / 6;
+    return h0 * this.tap(di - 1) + h1 * this.tap(di) + h2 * this.tap(di + 1) + h3 * this.tap(di + 2);
+  }
+}
+
+class VwBiquad {
+  constructor() { this.b0 = 1; this.b1 = 0; this.b2 = 0; this.a1 = 0; this.a2 = 0; this.s1 = 0; this.s2 = 0; }
+  setAnalog(b0, b1, b2, a0, a1, a2, fs) {
+    const K = 2 * fs, K2 = K * K;
+    if (b2 === 0 && a2 === 0) {
+      const A0 = a0 + a1 * K;
+      this.b0 = (b0 + b1 * K) / A0; this.b1 = (b0 - b1 * K) / A0; this.b2 = 0;
+      this.a1 = (a0 - a1 * K) / A0; this.a2 = 0;
+      return;
+    }
+    const B0 = b0 + b1 * K + b2 * K2, B1 = 2 * b0 - 2 * b2 * K2, B2 = b0 - b1 * K + b2 * K2;
+    const A0 = a0 + a1 * K + a2 * K2, A1 = 2 * a0 - 2 * a2 * K2, A2 = a0 - a1 * K + a2 * K2;
+    this.b0 = B0 / A0; this.b1 = B1 / A0; this.b2 = B2 / A0; this.a1 = A1 / A0; this.a2 = A2 / A0;
+  }
+  process(x) {
+    const y = this.b0 * x + this.s1;
+    this.s1 = this.b1 * x - this.a1 * y + this.s2;
+    this.s2 = this.b2 * x - this.a2 * y;
+    return y;
+  }
+}
+
+class VwDc {
+  constructor() { this.x1 = 0; this.y1 = 0; }
+  process(x) { const y = x - this.x1 + 0.995 * this.y1; this.x1 = x; this.y1 = y; return y; }
+}
+
+const VW_DEFAULT_SETTINGS = {
+  sampleRate: 96000, tempC: 30, dispersion: 0.991, footLoss: 1.0, radiation: true,
+  jetRatio: 1.0, jetReflection: 1.0, jetGain: -100, noiseGain: 0.002, jetOffset: 0.1,
+  jetStrouhal: 0.2, jetLpOrder: 2, maxPressurePa: 1500,
+};
+
+class VwWhistle {
+  // g: {boreRadius, length, holePos[6], holeRadius[6], chimney[6], windowLength, windowWidth, windowWall, windowScale} (metres)
+  constructor(g, s = {}) {
+    this.g = g;
+    this.s = Object.assign({}, VW_DEFAULT_SETTINGS, s);
+    const S = this.s;
+    this.c = 331.3 * Math.sqrt((S.tempC + 273.15) / 273.15) * S.dispersion;
+    this.rho = 1.2041 * 293.15 / (S.tempC + 273.15);
+    const x = [0, ...g.holePos, g.length];
+    this.segDelay = []; this.right = []; this.left = [];
+    for (let k = 0; k < 7; k++) {
+      this.segDelay.push((x[k + 1] - x[k]) / this.c * S.sampleRate);
+      this.right.push(new VwDelay()); this.left.push(new VwDelay());
+    }
+    this.jetDelay = new VwDelay();
+    this.holeFilt = Array.from({ length: 6 }, () => new VwBiquad());
+    this.open = new Float64Array(6);
+    this.windowFilt = new VwBiquad(); this.footFilt = new VwBiquad();
+    this.dc = new VwDc(); this.vWinDc = new VwDc();
+    this.leakDc = 0;
+    this.breath = 0; this.lastWin = 0; this.jetLp = 0; this.jetLp2 = 0; this.jetLpCoef = 0;
+    this.lastTopOut = 0; this.lastSplit = 0; this.lastBreathForLp = -1;
+    this.noise = 22222 >>> 0;
+    this.rOut = new Float64Array(7); this.lOut = new Float64Array(7);
+    this.designWindow(); this.designFoot();
+    for (let i = 0; i < 6; i++) this.setOpenness(i, 0, true);
+  }
+
+  setOpenness(i, o, force = false) {
+    o = Math.min(1, Math.max(0, o));
+    if (!force && Math.abs(o - this.open[i]) < 1e-4) return;
+    this.open[i] = o;
+    this.designHole(i);
+  }
+
+  setBreath(b) { this.breath = b < 0 ? 0 : b; }
+
+  white() {
+    let n = this.noise;
+    n ^= n << 13; n >>>= 0;
+    n ^= n >>> 17;
+    n ^= n << 5; n >>>= 0;
+    this.noise = n;
+    return n * (2 / 4294967295) - 1;
+  }
+
+  process() {
+    const S = this.s, g = this.g, fs = S.sampleRate;
+    for (let k = 0; k < 7; k++) {
+      this.rOut[k] = this.right[k].read(this.segDelay[k]);
+      this.lOut[k] = this.left[k].read(this.segDelay[k]);
+    }
+    const aTop = this.lOut[0];
+    const pressurePa = this.breath * S.maxPressurePa;
+    const ujet = Math.sqrt(2 * pressurePa / this.rho);
+    const convect = 0.4 * (ujet > 1e-3 ? ujet : 1e-3);
+    let jd = S.jetRatio * (g.windowLength / convect) * fs;
+    jd = jd < 2 ? 2 : (jd > 2000 ? 2000 : jd);
+
+    const u = ujet > 0.5 ? ujet : 0.5;
+    const vWin = this.vWinDc.process(this.lastTopOut - aTop);
+    this.jetDelay.write(S.jetReflection * vWin / u + S.noiseGain * this.white());
+    const F = Math.tanh(this.jetDelay.read(jd) + S.jetOffset);
+    let jet = S.jetGain * ujet * (F - this.lastSplit);
+    this.lastSplit = F;
+
+    if (S.jetStrouhal > 0 && this.breath !== this.lastBreathForLp) {
+      const fc = S.jetStrouhal * u / g.windowLength;
+      this.jetLpCoef = 1 - Math.exp(-2 * Math.PI * Math.min(fc, 0.45 * fs) / fs);
+      this.lastBreathForLp = this.breath;
+    }
+    this.jetLp += this.jetLpCoef * (jet - this.jetLp);
+    this.jetLp2 += this.jetLpCoef * (this.jetLp - this.jetLp2);
+    jet = S.jetLpOrder >= 2 ? this.jetLp2 : this.jetLp;
+
+    let w = this.windowFilt.process(aTop);
+    this.leakDc += 0.0002 * (w - this.leakDc);
+    w -= 0.0002 * this.leakDc;
+    const pTopOut = w + jet;
+    this.right[0].write(pTopOut);
+    this.lastTopOut = pTopOut;
+
+    for (let i = 0; i < 6; i++) {
+      const a = this.rOut[i], b = this.lOut[i + 1];
+      const pJ = this.holeFilt[i].process(a + b);
+      this.left[i].write(pJ - a);
+      this.right[i + 1].write(pJ - b);
+    }
+    this.left[6].write(S.footLoss * this.footFilt.process(this.rOut[6]));
+
+    const pWin = aTop + pTopOut;
+    const out = this.dc.process(pWin - this.lastWin);
+    this.lastWin = pWin;
+    return out;
+  }
+
+  designHole(i) {
+    const o = this.open[i], g = this.g, c = this.c, fs = this.s.sampleRate;
+    const a = g.boreRadius, b = g.holeRadius[i], t = g.chimney[i];
+    const Sb = Math.PI * a * a, Sh = Math.PI * b * b;
+    const ti = (br) => { const d = br / a; return br * (0.82 - 0.193 * d - 1.09 * d * d + 1.27 * d ** 3 - 0.71 * d ** 4); };
+    const tauC = (Sh / Sb) * (t + ti(b)) / c;
+    if (o <= 1e-4) { this.holeFilt[i].setAnalog(1, 0, 0, 1, tauC / 2, 0, fs); return; }
+    const bo = b * Math.sqrt(o), So = Math.PI * bo * bo;
+    const A = So / Sb, tauI = (t + ti(bo)) / c, tauR = 0.61 * bo / c;
+    const t1 = tauI + tauR, t2 = tauI * tauR;
+    this.holeFilt[i].setAnalog(0, 2 * t1, 2 * t2, A, 2 * t1 + A * tauR, 2 * t2 + (1 - o) * tauC * t1, fs);
+  }
+
+  designWindow() {
+    const g = this.g, c = this.c, fs = this.s.sampleRate;
+    const Sb = Math.PI * g.boreRadius ** 2, Sw = g.windowLength * g.windowWidth;
+    const rw = Math.sqrt(Sw / Math.PI);
+    const le = g.windowScale * (g.windowWall + 1.7 * rw);
+    const B = Sb / Sw, tauWr = 0.61 * rw / c, tauWi = le / c - tauWr;
+    const w1 = tauWi + tauWr, w2 = tauWi * tauWr;
+    this.windowFilt.setAnalog(-1, B * w1 - tauWr, B * w2, 1, B * w1 + tauWr, B * w2, fs);
+  }
+
+  designFoot() {
+    const a = this.g.boreRadius, c = this.c;
+    const tl = a / c, tauA = 0.1133 * a / c;
+    this.footFilt.setAnalog(-1, tauA, 0, 1, tauA + tl, tauA * tl, this.s.sampleRate);
+  }
+}
+
+// Norm's Generation D, from the calibrated impedance model (render/synth.py generation_d_config).
+function vwGenerationD() {
+  const top = 263.4, edge = [144.65, 123.6, 100.65, 79.5, 60.15, 35.0], dia = [4.45, 5.8, 5.1, 4.75, 6.0, 6.0];
+  return {
+    boreRadius: 11.8 / 2 / 1000, length: top / 1000,
+    holePos: edge.map((e, i) => (top - (e + dia[i] / 2)) / 1000),
+    holeRadius: dia.map((d) => d / 2 / 1000),
+    chimney: dia.map(() => 0.4 / 1000),
+    windowLength: 5.0 / 1000, windowWidth: 7.7 / 1000, windowWall: 2.0 / 1000, windowScale: 0.92,
+  };
+}
+
+if (typeof module !== 'undefined') module.exports = { VwWhistle, vwGenerationD, VW_DEFAULT_SETTINGS };
+</script>

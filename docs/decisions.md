@@ -20,3 +20,4 @@ One line each: date, decision, reason.
 - 2026-11-01: Open holes and window radiate through end-correction mass in parallel with rho c / S (radiation resistance), not a pure inertance; jet input is DC-blocked and the window leaks static pressure.
 - 2026-11-01: Tongued attacks 8 ms: slow breath ramps start second-octave notes in the first register.
 - 2026-11-01: Fingering changes ramp over ~20 ms (real fingers aren't instantaneous; instantaneous filter switches click).
+- 2026-11-01: Browser version: web/whistle-model.js is a line-for-line JS port of dsp/whistle.hpp (renders the test scale identically: 0.0 cents, 0.0 dB per note); web/play.html runs it in an AudioWorklet at 2x oversampling (96 kHz model on 48 kHz devices) with 15 ms finger and 8 ms breath ramps.
