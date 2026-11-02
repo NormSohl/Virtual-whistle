@@ -17,3 +17,5 @@ One line each: date, decision, reason.
 - 2026-11-01: STK-style jet as the default for now (reliable first register); physical deflection/tanh jet kept as an experimental option until it starts on long fingerings.
 - 2026-11-01: Physical flue jet (deflection by window flow, convective delay, tanh labium split, dipole source, Strouhal-limited band) replaces the STK-style jet as default; second octave comes from steady breath, no attack kick.
 - 2026-11-01: Target is a better-sounding instrument than Norm's Generation, not an imitation of its flaws; the measured Generation is the calibration reference only.
+- 2026-11-01: Open holes and window radiate through end-correction mass in parallel with rho c / S (radiation resistance), not a pure inertance; jet input is DC-blocked and the window leaks static pressure.
+- 2026-11-01: Tongued attacks 8 ms: slow breath ramps start second-octave notes in the first register.

@@ -135,6 +135,7 @@ struct Settings {
     float tempC = 30.f;
     float dispersion = 0.991f;   // boundary-layer slowing of sound in the bore (c_eff = c * dispersion)
     float footLoss = 1.0f;       // extra broadband loss per foot reflection
+    bool radiation = true;       // radiation resistance at open holes and window
     float lossRefHz = 0.f;       // >0: per-segment wall loss evaluated at this frequency (0 = off)
     float levelComp = 0.f;       // experimental output levelling (off): see docs/results/2026-11-01-octave-break.md
     float vortexLoss = 0.f;      // nonlinear window loss coefficient (model 2)
@@ -242,7 +243,10 @@ public:
             // source ~ dQ/dt with Q ~ U * split. Breath changes the delay, so
             // registers change with steady blowing pressure.
             const float u = ujet > 0.5f ? ujet : 0.5f;
-            const float vWin = lastTopOut_ - aTop;
+            // The jet responds to acoustic flow, not to a static offset. The bore is
+            // lossless at DC (every boundary reflects -1), so any net impulse from
+            // the jet would sit there forever and pin the jet to one side: block DC.
+            const float vWin = vWinDc_.process(lastTopOut_ - aTop);
             const float deflect = s_.jetReflection * vWin / u + s_.noiseGain * white();
             jetDelay_.write(deflect);
             const float eta = jetDelay_.read(jetDelaySamples);
@@ -274,7 +278,8 @@ public:
         jetLp_ += jetLpCoef_ * (jet - jetLp_);
         jetLp2_ += jetLpCoef_ * (jetLp_ - jetLp2_);   // second pole: 12 dB/oct
         jet = s_.jetLpOrder >= 2 ? jetLp2_ : jetLp_;
-        const float pTopOut = windowFilt_.process(aTop) + jet;
+        // Tiny leak at the window so a static bore pressure decays (mean flow escapes).
+        const float pTopOut = topLeak_.process(windowFilt_.process(aTop)) + jet;
         right_[0].write(pTopOut);
         lastTopOut_ = pTopOut;
 
@@ -324,11 +329,24 @@ private:
         }
         const double bo = b * std::sqrt(o);
         const double So = kPi * bo * bo;
-        const double te = t + ti(bo) + 0.61 * bo;
-        const double tauO = (Sb / So) * te / c_;            // open part: Zs/Z0 = s tauO
-        // H = 2 s tauO / (o' + 2 s tauO + (1-o) s^2 tauC tauO), with o' = 1 (open part already scaled by area)
-        const double closedPart = (1.0 - o) * tauC * tauO;
-        holeFilt_[i].setAnalog(0, 2 * tauO, 0, 1, 2 * tauO, closedPart, s_.sampleRate);
+        if (!s_.radiation) {
+            const double te = t + ti(bo) + 0.61 * bo;
+            const double tauO = (Sb / So) * te / c_;        // open part: Zs/Z0 = s tauO
+            // H = 2 s tauO / (1 + 2 s tauO + (1-o) s^2 tauC tauO)
+            holeFilt_[i].setAnalog(0, 2 * tauO, 0, 1, 2 * tauO, (1.0 - o) * tauC * tauO, s_.sampleRate);
+            return;
+        }
+        // Open part with radiation: inner inertance in series with the radiation
+        // impedance of the hole mouth, modelled as its end-correction mass in
+        // parallel with rho c / S (Re Z ~ (k b)^2 at low frequency):
+        //   Zs/Z0b = s tauI + s tauR / (1 + s tauR)
+        const double A = So / Sb;
+        const double tauI = (t + ti(bo)) / c_;
+        const double tauR = 0.61 * bo / c_;
+        const double t1 = tauI + tauR, t2 = tauI * tauR;
+        // H = 1 / (1 + Ys/(2 Y0) + (1-o) s tauC / 2); the closed part's s^3 term is dropped.
+        holeFilt_[i].setAnalog(0, 2 * t1, 2 * t2, A, 2 * t1 + A * tauR, 2 * t2 + (1.0 - o) * tauC * t1,
+                               s_.sampleRate);
     }
 
     void designWindow() {
@@ -338,7 +356,17 @@ private:
         const double rw = std::sqrt(Sw / kPi);
         const double le = g_.windowScale * (g_.windowWall + 1.7 * rw);
         const double tauW = (Sb / Sw) * le / c_;
-        windowFilt_.setAnalog(-1, tauW, 0, 1, tauW, 0, s_.sampleRate);
+        if (!s_.radiation) {
+            windowFilt_.setAnalog(-1, tauW, 0, 1, tauW, 0, s_.sampleRate);
+            return;
+        }
+        // Same mouth model as the holes: Zw/Z0 = B [s tauWi + s tauWr / (1 + s tauWr)],
+        // keeping the total low-frequency inertance equal to tauW.
+        const double B = Sb / Sw;
+        const double tauWr = 0.61 * rw / c_;
+        const double tauWi = (le / c_) - tauWr;
+        const double w1 = tauWi + tauWr, w2 = tauWi * tauWr;
+        windowFilt_.setAnalog(-1, B * w1 - tauWr, B * w2, 1, B * w1 + tauWr, B * w2, s_.sampleRate);
     }
 
     void designFoot() {
@@ -374,6 +402,11 @@ private:
     float breath_ = 0.f, lastWin_ = 0.f;
     float jetLp_ = 0.f, jetLpCoef_ = 0.f;
     float lastTopOut_ = 0.f, lastSplit_ = 0.f, lastBreathForLp_ = -1.f, jetLp2_ = 0.f;
+    DcBlock vWinDc_;
+    struct Leak {  // passes AC, lets DC decay with a ~50 ms time constant
+        float process(float x) { dc += 0.0002f * (x - dc); return x - 0.0002f * dc; }
+        float dc = 0.f;
+    } topLeak_;
     uint32_t noise_ = 22222u;
 };
 

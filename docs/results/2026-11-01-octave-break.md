@@ -57,3 +57,48 @@ in correct register: 14/14; of those mean -4.2 sd 10.1 max 18.1 cents; level spr
 1. Losses that are physically grounded: radiation resistance at open holes and window, frequency-dependent wall loss; then re-check pitch and register map.
 2. Soft-blowing behaviour on short fingerings.
 3. Tone: Norm wants a better instrument than the cheap whistle, not a copy. Levers: windway/labium geometry (jet offset, Strouhal band), bore and hole sizes from the optimizer.
+
+## Update: radiation losses, a DC lock-up, faster tonguing (v3)
+Norm on v2: timbre better (especially low D), but a metallic attack, worst on the second octave.
+
+What the onset spectra showed: second-octave notes started with a burst of first-register and inharmonic bore modes (e.g. G' carried a steady 1.5x component, a multiphonic), and the model was nearly lossless where sound leaves the open holes.
+
+Changes:
+- **Radiation resistance at open holes and the window.** Each mouth is its end-correction mass in parallel with rho c / S, so Re Z grows ~ (kb)^2 like the real radiation load. Level spread across the scale dropped from 61 dB to 22 dB raw, the natural crescendo of a whistle; no post-levelling needed.
+- **DC lock-up fixed.** With radiation the model went silent above medium breath. Cause: every boundary reflects -1 at DC, so the bore is lossless at DC; any net impulse from the jet stayed in the bore forever and pinned the jet to one side of the labium. The jet now sees DC-blocked window flow, and the window leaks static pressure (~50 ms).
+- **Tongued attack 8 ms instead of 40 ms.** A slow breath ramp crosses the first-register pressure range on its way to a second-octave pressure, so the note started in the wrong register. Onset inharmonic energy dropped by ~10 dB on the second octave (e.g. G' -17 to -31 dB relative to harmonics).
+
+Register map with these changes:
+```
+D   111222222223333333334444.  dB: -41 -19 -20 -11 -12 -7 -6
+E   2111222222222333333333333  dB: -33 -17 -12 -21 -6 -8 -13
+F#  2111122222222222333333333  dB: -42 -38 -10 -13 -7 -6 -8
+G   3111122222222222221333333  dB: -48 -28 -11 -10 -16 -7 -7
+A   .111111222222222222222233  dB: -73 -19 -10 -7 -8 -14 -8
+B   .211111112222222222222222  dB: -68 -16 -35 -8 -6 -8 -12
+C#  1.11111111122222222222222  dB: -40 -15 -19 -12 -7 -6 -7
+D2  2...22222222.............  dB: -40 -22 -20 -21 -9 -6 -6
+levels: 0.05 0.25 0.45 0.65 0.85 1.05 1.25 (every 4th column)
+```
+Every fingering now plays first then second register as breath rises, with no dead zones.
+
+Scale (per-note breath, 8 ms tongued attack, no kick, no levelling), `docs/audio/2026-11-01_synth_generation_d_scale_v3.wav`:
+```
+note  pattern  breath  synth Hz    take1    take2  vs avg level dB
+D     xxxxxx     0.10     598.8    598.3    593.4    +8.5    -28.5
+E     xxxxxo     0.15     671.0    674.2    667.1    +1.0    -26.4
+F#    xxxxoo     0.17     746.0    750.0    748.0    -7.0    -23.2
+G     xxxooo     0.17     806.5    803.3    799.5   +11.0    -19.9
+A     xxoooo     0.22     897.7    905.4    904.3   -13.8    -18.5
+B     xooooo     0.30    1030.9   1034.6   1023.3    +3.3    -17.0
+C#    oooooo     0.32    1156.2   1162.6   1159.8    -7.5    -13.7
+D'    oxxxxx     0.42    1215.5        -   1199.5   +23.0    -13.8
+E'    xxxxxo     0.42    1343.5   1360.1   1348.1   -13.6    -12.6
+F#'   xxxxoo     0.55    1495.1   1509.1   1500.7   -11.3    -11.1
+G'    xxxooo     0.60    1616.7   1618.4   1614.5    +0.3     -8.9
+A'    xxoooo     0.75    1798.2   1817.0   1800.6   -10.2     -7.9
+B'    xooooo     0.85    2061.8   2081.5   2040.8    +0.6     -6.8
+C#'   oooooo     0.90    2300.9   2308.6        -    -5.8     -6.2
+in correct register: 14/14; of those mean -1.5 sd 10.2 max 23.0 cents; level spread 22 dB (raw)
+```
+Steady states are clean harmonic spectra. Remaining onset artefacts: the very first note (cold start) and the vented D' still have inharmonic partials in the first ~60 ms.

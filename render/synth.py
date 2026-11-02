@@ -59,7 +59,7 @@ def openness(pattern: str) -> list[float]:
     return [{"x": 0.0, "o": 1.0, "h": 0.5}[c] for c in pattern]
 
 
-def note_rows(t0: float, pattern: str, breath: float, hold: float, attack: float = 0.04,
+def note_rows(t0: float, pattern: str, breath: float, hold: float, attack: float = 0.008,
               gap: float = 0.25, overshoot: float = 1.0) -> tuple[list[list[float]], float]:
     """One tongued note. `overshoot` > 1 adds a brief breath spike at the attack,
     the way players kick the second octave in."""
@@ -90,8 +90,8 @@ def render(cfg: dict, rows: list[list[float]], name: str) -> Path:
 # Breath (fraction of 1500 Pa) at the middle of each fingering's register range,
 # from the register map in docs/results/2026-11-01-octave-break.md. Like a real
 # whistle, shorter fingerings and the second octave need more breath.
-BREATH = {"D": 0.10, "E": 0.17, "F#": 0.25, "G": 0.28, "A": 0.35, "B": 0.47, "C#": 0.55,
-          "D'": 0.45, "E'": 0.50, "F#'": 0.75, "G'": 0.85, "A'": 0.90, "B'": 1.00, "C#'": 1.10}
+BREATH = {"D": 0.10, "E": 0.15, "F#": 0.17, "G": 0.17, "A": 0.22, "B": 0.30, "C#": 0.32,
+          "D'": 0.42, "E'": 0.42, "F#'": 0.55, "G'": 0.60, "A'": 0.75, "B'": 0.85, "C#'": 0.90}
 
 
 def scale_rows(breath1: float | None = None, breath2: float | None = None, hold: float = 1.0, kick: float = 1.0):
