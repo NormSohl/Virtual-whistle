@@ -1,0 +1,41 @@
+{
+  "bore_length": 267.62951033808565,
+  "bore_diameter": 12.5,
+  "holes": [
+    {
+      "position": 125.63570260084359,
+      "diameter": 6.150683975937454,
+      "chimney": 0.6
+    },
+    {
+      "position": 143.51837227727233,
+      "diameter": 6.028185291041623,
+      "chimney": 0.6
+    },
+    {
+      "position": 164.9530468237216,
+      "diameter": 6.476870886164436,
+      "chimney": 0.6
+    },
+    {
+      "position": 190.74059952640977,
+      "diameter": 6.697311835799504,
+      "chimney": 0.6
+    },
+    {
+      "position": 201.05130798577545,
+      "diameter": 6.69546725401503,
+      "chimney": 0.6
+    },
+    {
+      "position": 228.08534123972134,
+      "diameter": 6.528304974479305,
+      "chimney": 0.6
+    }
+  ],
+  "window_length": 6.0,
+  "window_width": 9.0,
+  "window_wall": 1.5,
+  "window_corr_scale": 1.0,
+  "temp_c": 25.0
+}

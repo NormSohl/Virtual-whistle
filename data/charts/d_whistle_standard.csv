@@ -1,0 +1,28 @@
+note,midi,register,pattern,primary,notes
+D5,74,1,xxxxxx,yes,
+D#5,75,1,xxxxxh,yes,half-hole 6
+E5,76,1,xxxxxo,yes,
+F5,77,1,xxxxho,yes,half-hole 5
+F#5,78,1,xxxxoo,yes,
+G5,79,1,xxxooo,yes,
+G#5,80,1,xxhooo,yes,half-hole 3
+A5,81,1,xxoooo,yes,
+A#5,82,1,xhoooo,yes,half-hole 2
+B5,83,1,xooooo,yes,
+C6,84,1,hooooo,yes,half-hole 1
+C6,84,1,oxxooo,no,common cross fingering; source lists it for conical-bore whistles
+C#6,85,1,oooooo,yes,
+C#6,85,1,ooooox,no,alternate for better balance
+D6,86,2,oxxxxx,yes,top hole vented
+D#6,87,2,xxxxxh,yes,
+E6,88,2,xxxxxo,yes,
+F6,89,2,xxxxho,yes,
+F#6,90,2,xxxxoo,yes,
+G6,91,2,xxxooo,yes,
+G#6,92,2,xxhooo,yes,
+A6,93,2,xxoooo,yes,
+A#6,94,2,xhoooo,yes,
+B6,95,2,xooooo,yes,
+C7,96,2,hooooo,yes,
+C#7,97,2,oooooo,yes,
+C#7,97,2,ooooox,no,alternate for better balance
