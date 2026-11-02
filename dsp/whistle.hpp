@@ -251,7 +251,7 @@ public:
             jetDelay_.write(deflect);
             const float eta = jetDelay_.read(jetDelaySamples);
             const float F = std::tanh(eta + s_.jetOffset);
-            jet = s_.jetGain * u * (F - lastSplit_);
+            jet = s_.jetGain * ujet * (F - lastSplit_);  // no breath, no jet flow
             lastSplit_ = F;
             // Vortex shedding at the window edges: a nonlinear loss ~ v|v| that
             // limits amplitude (Verge; Fabre & Hirschberg).

@@ -60,13 +60,15 @@ def openness(pattern: str) -> list[float]:
 
 
 def note_rows(t0: float, pattern: str, breath: float, hold: float, attack: float = 0.008,
-              gap: float = 0.25, overshoot: float = 1.0) -> tuple[list[list[float]], float]:
+              gap: float = 0.25, overshoot: float = 1.0, finger: float = 0.02,
+              release: float = 0.03) -> tuple[list[list[float]], float]:
     """One tongued note. `overshoot` > 1 adds a brief breath spike at the attack,
-    the way players kick the second octave in."""
+    the way players kick the second octave in. Fingers move to the next note over
+    `finger` seconds at the end of the gap (a hole snapping open in one sample clicks)."""
     o = openness(pattern)
     rows = [[t0] + o + [0.0], [t0 + attack] + o + [breath * overshoot],
             [t0 + attack + 0.03] + o + [breath], [t0 + hold] + o + [breath],
-            [t0 + hold + attack] + o + [0.0], [t0 + hold + gap] + o + [0.0]]
+            [t0 + hold + release] + o + [0.0], [t0 + hold + gap - finger] + o + [0.0]]
     return rows, t0 + hold + gap
 
 

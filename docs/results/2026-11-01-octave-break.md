@@ -102,3 +102,11 @@ C#'   oooooo     0.90    2300.9   2308.6        -    -5.8     -6.2
 in correct register: 14/14; of those mean -1.5 sd 10.2 max 23.0 cents; level spread 22 dB (raw)
 ```
 Steady states are clean harmonic spectra. Remaining onset artefacts: the very first note (cold start) and the vented D' still have inharmonic partials in the first ~60 ms.
+
+## Update: onset pops on first-octave notes (v4)
+Norm on v3: much better; notes 2-5 (E, F#, G, A) still pop slightly at the start; second octave liked.
+
+Cause: between notes the fingering changed in a single sample while the previous note was still ringing, so the tonehole filters switched coefficients under a live signal (E's onset peaked +16 dB above its steady level). Also the jet kept a small drive at zero breath (jet speed was clamped to 0.5 m/s).
+
+Fixes: fingers move over 20 ms at the end of each gap; the jet's flow is zero at zero breath; release ramp 30 ms. Onset peaks now 0 to -7 dB relative to steady level on E-A (was +3 to +16).
+in correct register 14/14, mean -1.5, sd 10.2, max 23.0 cents; level spread 22 dB

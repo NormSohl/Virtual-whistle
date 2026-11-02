@@ -19,3 +19,4 @@ One line each: date, decision, reason.
 - 2026-11-01: Target is a better-sounding instrument than Norm's Generation, not an imitation of its flaws; the measured Generation is the calibration reference only.
 - 2026-11-01: Open holes and window radiate through end-correction mass in parallel with rho c / S (radiation resistance), not a pure inertance; jet input is DC-blocked and the window leaks static pressure.
 - 2026-11-01: Tongued attacks 8 ms: slow breath ramps start second-octave notes in the first register.
+- 2026-11-01: Fingering changes ramp over ~20 ms (real fingers aren't instantaneous; instantaneous filter switches click).
