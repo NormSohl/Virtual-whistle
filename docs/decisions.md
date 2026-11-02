@@ -24,3 +24,4 @@ One line each: date, decision, reason.
 - 2026-11-01: Jet delay lengthens at a limited rate (0.003 samples/sample): releases stop the note instead of sweeping it through the lower register.
 - 2026-11-01: WARBL raw stream: CC 106 = 79/80/81 on channel 7, 27-byte SysEx frames every main-loop pass with unfiltered hole readings and pressure; calibration frame carries full-cover readings and ambient. Firmware fork based on upstream main 4.8 (runtime BMP/Honeywell detection).
 - 2026-11-01: Two kinds of model: character models match real instruments (Generation D stays unchanged); an ideal whistle uses the same physics with geometry optimized for playability, and drives CV/MPE output.
+- 2026-11-01: Ideal whistle fingering: thumb hole is an acoustic register vent (open = second octave at the same breath, vent chosen per fingering like keywork); R4 pinky closes a seventh hole for a whole tone below the tonic.
