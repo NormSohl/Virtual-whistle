@@ -198,6 +198,11 @@ void getSensors(void) {
 
 
         for (byte i = 0; i < 9; i++) {
+            // Keep the unfiltered, baseline-corrected reading for raw-stream mode: the
+            // adaptive filter below is right for note detection but lags slow shading.
+            int unf = toneholeRead[i] - (calibration == 0 ? toneholeBaseline[i] : 0);
+            toneholeUnfiltered[i] = unf < 0 ? 0 : unf;
+
             // Run through adaptive smoothing filter. Takes 50 us.
             filterToneholes[i].update(toneholeRead[i]);
             toneholeRead[i] = filterToneholes[i].getValue();
@@ -1118,6 +1123,68 @@ bool isMaybeInTransition() {
 
 
 
+
+
+
+
+// ----------------------------------------------------------------------------
+// Raw stream (virtual-whistle fork): every main-loop pass (~2 ms on USB) send one
+// SysEx frame with all nine unfiltered tonehole readings and the breath pressure,
+// so a physical model on the host can treat finger coverage as a continuous signal.
+// USB only: BLE can't carry this rate. Normal MIDI output is unaffected.
+//
+// Data frame (25 bytes incl. F0/F7):
+//   F0 7D 'W' 'R' 01 seq  h0lo h0hi ... h8lo h8hi  plo phi  F7
+//   h0..h8 = holes bell, R4, R3, R2, R1, L3, L2, L1, thumb (0-1023, baseline-corrected, unfiltered)
+//   p = twelveBitPressure + 8192 (14 bits); ambient is in the calibration frame
+// Calibration frame (sent on entry and on request):
+//   F0 7D 'W' 'R' 02 format version patch  c0lo c0hi ... c8lo c8hi  alo ahi F7
+//   c0..c8 = toneholeCovered - toneholeBaseline (reading at full cover), a = sensorCalibration << 2 (+8192)
+
+static inline void raw14(uint8_t* out, int v) {
+    if (v < 0) v = 0;
+    if (v > 16383) v = 16383;
+    out[0] = v & 0x7F;
+    out[1] = (v >> 7) & 0x7F;
+}
+
+void sendRawStream() {
+    static uint8_t seq = 0;
+    if (!rawStreamMode || USBstatus != USB_HOST) {
+        return;
+    }
+    uint8_t frame[4 + 1 + 18 + 2];
+    frame[0] = RAW_SYSEX_ID;
+    frame[1] = 'W';
+    frame[2] = 'R';
+    frame[3] = RAW_FRAME_DATA;
+    frame[4] = seq;
+    seq = (seq + 1) & 0x7F;
+    for (byte i = 0; i < 9; i++) {
+        raw14(&frame[5 + 2 * i], toneholeUnfiltered[i]);
+    }
+    raw14(&frame[23], twelveBitPressure + 8192);
+    MIDI.sendSysEx(sizeof(frame), frame, false);  // false: library adds F0/F7
+}
+
+void sendRawCalibration() {
+    if (USBstatus != USB_HOST) {
+        return;
+    }
+    uint8_t frame[4 + 3 + 18 + 2];
+    frame[0] = RAW_SYSEX_ID;
+    frame[1] = 'W';
+    frame[2] = 'R';
+    frame[3] = RAW_FRAME_CALIBRATION;
+    frame[4] = RAW_STREAM_FORMAT;
+    frame[5] = VERSION & 0x7F;
+    frame[6] = PATCH & 0x7F;
+    for (byte i = 0; i < 9; i++) {
+        raw14(&frame[7 + 2 * i], (int)toneholeCovered[i] - toneholeBaseline[i]);
+    }
+    raw14(&frame[25], (sensorCalibration << 2) + 8192);
+    MIDI.sendSysEx(sizeof(frame), frame, false);
+}
 
 
 
@@ -2727,6 +2794,23 @@ void handleControlChange(byte source, byte channel, byte number, byte value) {
 
                     // Send the first frame immediately.
                     sendDiagnosticData(true);
+                }
+
+                else if (value == MIDI_ENTER_RAW_STREAM) {
+                    // Raw-stream mode runs alongside normal playing (notes and CCs keep flowing).
+                    rawStreamMode = 1;
+                    rawStreamSource = source;
+                    useBellSensor = true;
+                    sendRawCalibration();
+                }
+
+                else if (value == MIDI_EXIT_RAW_STREAM) {
+                    rawStreamMode = 0;
+                    rawStreamSource = MIDI_SOURCE_NONE;
+                }
+
+                else if (value == MIDI_RAW_STREAM_CALIBRATION) {
+                    sendRawCalibration();
                 }
 
                 else if (value == MIDI_EXIT_DIAGNOSTIC_MODE) {

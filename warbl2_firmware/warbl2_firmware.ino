@@ -364,6 +364,9 @@ byte communicationModeSource = MIDI_SOURCE_NONE;  // The source of the last MIDI
 
 // Variables for the standalone diagnostics page. Kept separate from Config Tool communication mode.
 bool diagnosticMode = 0;
+bool rawStreamMode = 0;                                       // Streaming unfiltered tonehole + pressure readings as SysEx (virtual-whistle fork)
+byte rawStreamSource = MIDI_SOURCE_NONE;
+int toneholeUnfiltered[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };     // Baseline-corrected readings before the adaptive smoothing filter
 byte diagnosticModeSource = MIDI_SOURCE_NONE;
 int diagnosticRunTimePerCharge = 0;   // Cached EEPROM value, in minutes.
 byte diagnosticHardwareRevision = 0;  // Cached EEPROM value, e.g. 47 = hardware 4.7.
@@ -613,6 +616,7 @@ void loop() {
     getShift();                             // Shift the next note up or down based on register and key.
     sendNote();                             // Send the note as soon as we know the note, state, and shift.
     readMIDI();                             // Read incoming MIDI messages.
+    sendRawStream();                        // Raw tonehole/pressure frame for a physical-model host, if raw-stream mode is on.
 
 
 

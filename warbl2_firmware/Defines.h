@@ -665,7 +665,10 @@
 #define MIDI_CC_106_VALUE_76 76  // from diagnostics page. Exit diagnostic mode
 #define MIDI_CC_106_VALUE_77 77  // from diagnostics page. Reformat LittleFS
 #define MIDI_CC_106_VALUE_78 78  // from WARBL. Start of diagnostic data frame
-/* 79-99 unused -- can be used for WARBL2 */
+#define MIDI_CC_106_VALUE_79 79  // from host. Enter raw-stream mode (virtual-whistle fork)
+#define MIDI_CC_106_VALUE_80 80  // from host. Exit raw-stream mode
+#define MIDI_CC_106_VALUE_81 81  // from host. Re-send raw-stream calibration frame
+/* 82-99 unused -- can be used for WARBL2 */
 
 //Button Actions, see above 102  90/99
 #define MIDI_CC_106_VALUE_100 100  // Bidirectional. button action 0
@@ -763,6 +766,15 @@
 #define MIDI_ENTER_DIAGNOSTIC_MODE MIDI_CC_106_VALUE_75
 #define MIDI_EXIT_DIAGNOSTIC_MODE MIDI_CC_106_VALUE_76
 #define MIDI_RESET_LITTLEFS MIDI_CC_106_VALUE_77
+#define MIDI_ENTER_RAW_STREAM MIDI_CC_106_VALUE_79
+#define MIDI_EXIT_RAW_STREAM MIDI_CC_106_VALUE_80
+#define MIDI_RAW_STREAM_CALIBRATION MIDI_CC_106_VALUE_81
+
+// Raw-stream SysEx framing: F0 7D 'W' 'R' <type> ... F7  (0x7D = non-commercial manufacturer ID)
+#define RAW_SYSEX_ID 0x7D
+#define RAW_FRAME_DATA 0x01
+#define RAW_FRAME_CALIBRATION 0x02
+#define RAW_STREAM_FORMAT 1
 #define MIDI_DIAGNOSTIC_FRAME MIDI_CC_106_VALUE_78
 
 #define MIDI_STICKS_MODE MIDI_CC_111_VALUE_109  // Bidirectional. Hidden sticks mode - Same for 112 and 113
