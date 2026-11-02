@@ -7,6 +7,6 @@ hole_6,35.0,6.0,6.0,,position = lower edge of hole to foot end; round
 hole_5,60.15,6.0,6.0,,assumed same convention (lower edge to foot) - to confirm
 hole_4,73.75,4.75,4.75,,assumed lower edge to foot; RECHECK - photo shows holes evenly spaced (~81 mm expected)
 hole_3,100.65,5.1,5.1,,assumed lower edge to foot
-hole_2,124.0,5.75,,,assumed lower edge to foot
-hole_1,145.3,4.45,,,assumed lower edge to foot
+hole_2,123.6,5.8,5.8,,rechecked; lower edge to foot; round
+hole_1,144.65,4.45,4.45,,rechecked; lower edge to foot; round
 window,,5.0,7.7,,diameter_a = length along the axis ("height" 5 mm), diameter_b = width 7.7 mm; labium edge 263.5 mm from foot (10 3/8 in +-1/32, Norm); window spans 263.5-268.5 from foot, centre 266.0
