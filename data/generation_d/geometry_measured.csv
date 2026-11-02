@@ -1,0 +1,12 @@
+feature,position_mm,diameter_a_mm,diameter_b_mm,depth_mm,notes
+tube_od,,12.8,,,Norm calipers 2026-11-01
+bore,,11.8,,,Norm calipers; NOTE (12.8-11.8)/2 = 0.50 mm wall vs 0.32 measured: one of the three needs rechecking
+wall,,,,0.32,Norm calipers ("about")
+total_length,295.3,,,,11 5/8 in overall incl. head
+hole_6,35.0,6.0,6.0,,position = lower edge of hole to foot end; round
+hole_5,60.15,6.0,6.0,,assumed same convention (lower edge to foot) - to confirm
+hole_4,73.75,4.75,4.75,,assumed lower edge to foot; RECHECK - photo shows holes evenly spaced (~81 mm expected)
+hole_3,100.65,5.1,5.1,,assumed lower edge to foot
+hole_2,124.0,5.75,,,assumed lower edge to foot
+hole_1,145.3,4.45,,,assumed lower edge to foot
+window,,,,,still needed: foot to labium edge, foot to block face, window length and width
