@@ -69,3 +69,11 @@ Calibrated + hole 4 position free: bore top 262.9, window scale 0.89, hole 4 low
 2. Record the chromatic half-hole notes and cross-fingered C natural to test the partial-hole model.
 3. Breath sweeps for pitch vs blowing pressure (needed for the real-time model's jet).
 4. Then phase 3: the time-domain model in C++, rendered offline, checked against these same pitches.
+
+## Update: second take (same setup)
+`recordings/2026-11-01_two_octaves_diatonic_take2.m4a`; pitches added to `pitches_measured.csv` with a `take` column. Second-octave D sounded this time (+36 cents); C#7 was unsteady and is excluded.
+
+- **Take-to-take spread:** take 2 is 12.5 cents lower on average (softer blowing), and individual notes differ by 2-34 cents (sd 8.7). That is the noise floor of a single human-played take.
+- **Calibration on both takes together:** sd 14.7 with two numbers; sd 10.9 with hole 4 free. The model now fits about as well as the player repeats.
+- **Hole 4 again lands at ~78 mm** (78.1 here, 77.6 from take 1) instead of the measured 73.75. Two independent takes agree, so a re-measure of hole 4 is the most useful next check.
+- Second-octave D (top hole vented) comes out ~26 cents flat in the model relative to the real whistle: the vented-octave fingering is a good target for the next round of model work.
