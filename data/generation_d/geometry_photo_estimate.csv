@@ -1,0 +1,12 @@
+feature,position_mm,diameter_a_mm,diameter_b_mm,depth_mm,notes
+total_length,295.3,,,,Norm: 11 5/8 in overall (mouthpiece tip to foot)
+bore_top,29.7,11.8,,,PHOTO ESTIMATE: window centre from mouthpiece tip; bore 11.8 mm per Norm (calipers)
+bore_foot,295.3,11.8,,,
+head_joint,56.9,,,,PHOTO ESTIMATE: end of red head piece from tip
+window,29.7,5.5,7.5,2.0,PHOTO ESTIMATE: diameter_a = window length; diameter_b = width; depth = head wall
+hole_1,146.8,6.1,,0.45,PHOTO ESTIMATE positions from mouthpiece tip (+/-2 mm); diameters (+/-0.7 mm); wall assumes 1/2 in OD tube
+hole_2,166.6,6.1,,0.45,PHOTO ESTIMATE
+hole_3,189.7,5.8,,0.45,PHOTO ESTIMATE
+hole_4,212.2,5.2,,0.45,PHOTO ESTIMATE: looks smallest in the photo
+hole_5,234.3,6.7,,0.45,PHOTO ESTIMATE
+hole_6,256.0,6.7,,0.45,PHOTO ESTIMATE
