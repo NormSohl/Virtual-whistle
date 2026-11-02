@@ -4,3 +4,4 @@ __pycache__/
 build/
 *.wav.tmp
 .DS_Store
+out/

@@ -13,3 +13,5 @@ One line each: date, decision, reason.
 - 2026-11-01: Design fit pulls hole diameters weakly toward 6.5 mm (5 cents/mm): position and diameter trade off, and real makers pick finger-sized holes.
 - 2026-11-01: Half-hole rows are judged by the coverage needed to reach the target, not by a fixed 50%; players shade until it sounds right.
 - 2026-11-01: Calibrate with two numbers (acoustic top of bore, window inertance scale) at 30 °C breath temperature; per-note fudge factors are not allowed.
+- 2026-11-01: Real-time model at 96 kHz with 3rd-order Lagrange fractional delays; geometry taken from the impedance-model calibration, not refit to recordings.
+- 2026-11-01: STK-style jet as the default for now (reliable first register); physical deflection/tanh jet kept as an experimental option until it starts on long fingerings.
