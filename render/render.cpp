@@ -133,6 +133,11 @@ int main(int argc, char** argv) {
     s.noiseGain = float(get("noise_gain", s.noiseGain));
     s.jetOffset = float(get("jet_offset", s.jetOffset));
     s.jetModel = int(get("jet_model", s.jetModel));
+    s.jetStrouhal = float(get("jet_strouhal", s.jetStrouhal));
+    s.jetLpOrder = int(get("jet_lp_order", s.jetLpOrder));
+    s.lossRefHz = float(get("loss_ref_hz", s.lossRefHz));
+    s.vortexLoss = float(get("vortex_loss", s.vortexLoss));
+    s.levelComp = float(get("level_comp", s.levelComp));
     s.jetCutoffHz = float(get("jet_cutoff_hz", s.jetCutoffHz));
     s.maxPressurePa = float(get("max_pressure_pa", s.maxPressurePa));
 

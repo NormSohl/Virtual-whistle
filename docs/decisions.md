@@ -15,3 +15,5 @@ One line each: date, decision, reason.
 - 2026-11-01: Calibrate with two numbers (acoustic top of bore, window inertance scale) at 30 °C breath temperature; per-note fudge factors are not allowed.
 - 2026-11-01: Real-time model at 96 kHz with 3rd-order Lagrange fractional delays; geometry taken from the impedance-model calibration, not refit to recordings.
 - 2026-11-01: STK-style jet as the default for now (reliable first register); physical deflection/tanh jet kept as an experimental option until it starts on long fingerings.
+- 2026-11-01: Physical flue jet (deflection by window flow, convective delay, tanh labium split, dipole source, Strouhal-limited band) replaces the STK-style jet as default; second octave comes from steady breath, no attack kick.
+- 2026-11-01: Target is a better-sounding instrument than Norm's Generation, not an imitation of its flaws; the measured Generation is the calibration reference only.

@@ -6,4 +6,4 @@ A physical model of a penny whistle, played from a WARBL, tuned against measurem
 - How to measure a real whistle: [docs/measuring.md](docs/measuring.md)
 - Design decisions: [docs/decisions.md](docs/decisions.md)
 
-Status: phase 3 (real-time model) started; first sound: [docs/results/2026-11-01-first-sound.md](docs/results/2026-11-01-first-sound.md). Render with `python -m render.synth scale`. Tools ready: pitch analysis (`python -m analysis.pitch file.wav`), impedance model, design fit. Latest results: [model vs real Generation D](docs/results/2026-11-01-generation-d-vs-model.md). Tests: `python -m pytest`.
+Status: phase 3 (real-time model) started; latest: [octave break from steady breath](docs/results/2026-11-01-octave-break.md). Render with `python -m render.synth scale`. Tools ready: pitch analysis (`python -m analysis.pitch file.wav`), impedance model, design fit. Latest results: [model vs real Generation D](docs/results/2026-11-01-generation-d-vs-model.md). Tests: `python -m pytest`.

@@ -87,11 +87,20 @@ def render(cfg: dict, rows: list[list[float]], name: str) -> Path:
     return w
 
 
-def scale_rows(breath1: float, breath2: float, hold: float = 1.0, kick: float = 1.0):
+# Breath (fraction of 1500 Pa) at the middle of each fingering's register range,
+# from the register map in docs/results/2026-11-01-octave-break.md. Like a real
+# whistle, shorter fingerings and the second octave need more breath.
+BREATH = {"D": 0.10, "E": 0.17, "F#": 0.25, "G": 0.28, "A": 0.35, "B": 0.47, "C#": 0.55,
+          "D'": 0.45, "E'": 0.50, "F#'": 0.75, "G'": 0.85, "A'": 0.90, "B'": 1.00, "C#'": 1.10}
+
+
+def scale_rows(breath1: float | None = None, breath2: float | None = None, hold: float = 1.0, kick: float = 1.0):
+    """Two-octave scale. With breath1/breath2 None, each note uses its BREATH entry."""
     rows, t = [], 0.0
-    plan = [(FINGERINGS[n], breath1, n, 1.0) for n in ("D", "E", "F#", "G", "A", "B", "C#")]
-    plan += [(FINGERINGS["D2"], breath2, "D'", kick)] + \
-            [(FINGERINGS[n], breath2, n + "'", kick) for n in ("E", "F#", "G", "A", "B", "C#")]
+    first = ("D", "E", "F#", "G", "A", "B", "C#")
+    plan = [(FINGERINGS[n], breath1 if breath1 is not None else BREATH[n], n, 1.0) for n in first]
+    plan += [(FINGERINGS["D2"], breath2 if breath2 is not None else BREATH["D'"], "D'", kick)] + \
+            [(FINGERINGS[n], breath2 if breath2 is not None else BREATH[n + "'"], n + "'", kick) for n in first[1:]]
     labels = []
     for pattern, b, label, ov in plan:
         r, t1 = note_rows(t, pattern, b, hold, overshoot=ov)
@@ -107,9 +116,9 @@ def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("what", choices=["scale", "sweep"])
     p.add_argument("note", nargs="?", default="D")
-    p.add_argument("--breath1", type=float, default=0.25)
-    p.add_argument("--breath2", type=float, default=1.2)
-    p.add_argument("--kick", type=float, default=1.5, help="second-octave attack overshoot")
+    p.add_argument("--breath1", type=float, default=None, help="fixed first-octave breath (default: per-note table)")
+    p.add_argument("--breath2", type=float, default=None, help="fixed second-octave breath (default: per-note table)")
+    p.add_argument("--kick", type=float, default=1.0, help="second-octave attack overshoot (1 = none)")
     p.add_argument("--set", nargs="*", default=[], help="config overrides key=value")
     a = p.parse_args()
     overrides = {k: float(v) for k, v in (s.split("=") for s in a.set)}

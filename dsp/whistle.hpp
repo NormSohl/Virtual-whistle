@@ -134,14 +134,19 @@ struct Settings {
     float sampleRate = 96000.f;
     float tempC = 30.f;
     float dispersion = 0.991f;   // boundary-layer slowing of sound in the bore (c_eff = c * dispersion)
-    float footLoss = 0.985f;     // broadband loss per foot reflection (wall losses lumped)
-    float jetRatio = 2.0f;       // scales jet travel time (window length / convection speed)
-    float jetReflection = 0.5f;  // how strongly the returning bore wave acts on the jet
-    float jetGain = 1.0f;
-    float noiseGain = 0.03f;
-    int jetModel = 0;            // 0 = STK-style (default), 1 = experimental deflection/tanh
-    float jetOffset = 0.15f;     // labium offset (experimental jet only)
-    float jetCutoffHz = 8000.f;  // jet drive lowpass
+    float footLoss = 1.0f;       // extra broadband loss per foot reflection
+    float lossRefHz = 0.f;       // >0: per-segment wall loss evaluated at this frequency (0 = off)
+    float levelComp = 0.f;       // experimental output levelling (off): see docs/results/2026-11-01-octave-break.md
+    float vortexLoss = 0.f;      // nonlinear window loss coefficient (model 2)
+    float jetRatio = 1.0f;       // scales jet travel time (window length / convection speed)
+    float jetReflection = 1.0f;  // jet receptivity to the window flow (model 2) / bore wave (model 0)
+    float jetGain = -100.0f;     // model 2 dipole source gain (sign sets the register phase); ~1 for model 0
+    float noiseGain = 0.002f;
+    int jetModel = 2;            // 2 = physical flue jet (default); 0 = STK-style; 1 = experimental
+    float jetOffset = 0.1f;      // labium offset relative to the jet (models 1, 2)
+    float jetCutoffHz = 8000.f;  // jet drive lowpass (fixed), used when jetStrouhal == 0
+    float jetStrouhal = 0.2f;    // >0: jet lowpass cutoff = jetStrouhal * U / window length
+    int jetLpOrder = 2;          // 1 or 2 poles
     float maxPressurePa = 1500.f; // breath 1.0 corresponds to this mouth pressure
 };
 
@@ -162,7 +167,13 @@ public:
         x[0] = 0.f;
         for (int i = 0; i < kHoles; ++i) x[i + 1] = g.holePos[i];
         x[kHoles + 1] = g.length;
-        for (int k = 0; k < kHoles + 1; ++k) segDelay_[k] = (x[k + 1] - x[k]) / c_ * s.sampleRate;
+        // Visco-thermal wall loss per segment (Benade: alpha ~ 3e-5 sqrt(f) / r per metre),
+        // evaluated at lossRefHz and applied as a broadband gain on each pass.
+        const float alpha = s.lossRefHz > 0.f ? 3.0e-5f * std::sqrt(s.lossRefHz) / g.boreRadius : 0.f;
+        for (int k = 0; k < kHoles + 1; ++k) {
+            segDelay_[k] = (x[k + 1] - x[k]) / c_ * s.sampleRate;
+            segGain_[k] = std::exp(-alpha * (x[k + 1] - x[k]));
+        }
 
         for (auto& d : right_) d.clear();
         for (auto& d : left_) d.clear();
@@ -176,6 +187,9 @@ public:
         for (int i = 0; i < kHoles; ++i) setOpenness(i, 0.f, true);
         noise_ = 22222u;
         jetLp_ = 0.f;
+        lastTopOut_ = lastSplit_ = 0.f;
+        lastBreathForLp_ = -1.f;
+        jetLp2_ = 0.f;
         jetLpCoef_ = 1.f - std::exp(-2.f * kPi * s.jetCutoffHz / s.sampleRate);
     }
 
@@ -196,8 +210,8 @@ public:
         // Read every wave arriving at a boundary this sample.
         float rOut[kHoles + 1], lOut[kHoles + 1];
         for (int k = 0; k < kHoles + 1; ++k) {
-            rOut[k] = right_[k].read(segDelay_[k]);
-            lOut[k] = left_[k].read(segDelay_[k]);
+            rOut[k] = segGain_[k] * right_[k].read(segDelay_[k]);
+            lOut[k] = segGain_[k] * left_[k].read(segDelay_[k]);
         }
 
         // Window end: wave returning from the bore, reflected through the
@@ -205,7 +219,7 @@ public:
         const float aTop = lOut[0];
         const float pressurePa = breath_ * s_.maxPressurePa;
         const float ujet = std::sqrt(2.f * pressurePa / rho_);           // jet speed, m/s
-        const float convect = 0.5f * (ujet > 1e-3f ? ujet : 1e-3f);      // jet disturbance speed
+        const float convect = (s_.jetModel == 2 ? 0.4f : 0.5f) * (ujet > 1e-3f ? ujet : 1e-3f);  // disturbance speed
         float jetDelaySamples = s_.jetRatio * (g_.windowLength / convect) * fs;
         jetDelaySamples = jetDelaySamples < 2.f ? 2.f : (jetDelaySamples > 2000.f ? 2000.f : jetDelaySamples);
 
@@ -219,6 +233,28 @@ public:
             float jx = jetDelay_.read(jetDelaySamples);
             jx = jx > 1.f ? 1.f : (jx < -1.f ? -1.f : jx);
             jet = s_.jetGain * (jx * jx * jx - jx);
+        } else if (s_.jetModel == 2) {
+            // Physical flue jet (after Verge, Fabre, Hirschberg): the acoustic
+            // flow through the window deflects the jet (receptivity ~ v / U);
+            // the deflection convects to the labium in tau = W / (0.4 U); the
+            // labium splits the jet flow (tanh profile, offset = labium
+            // misalignment); the injected flow acts as a dipole pressure
+            // source ~ dQ/dt with Q ~ U * split. Breath changes the delay, so
+            // registers change with steady blowing pressure.
+            const float u = ujet > 0.5f ? ujet : 0.5f;
+            const float vWin = lastTopOut_ - aTop;
+            const float deflect = s_.jetReflection * vWin / u + s_.noiseGain * white();
+            jetDelay_.write(deflect);
+            const float eta = jetDelay_.read(jetDelaySamples);
+            const float F = std::tanh(eta + s_.jetOffset);
+            jet = s_.jetGain * u * (F - lastSplit_);
+            lastSplit_ = F;
+            // Vortex shedding at the window edges: a nonlinear loss ~ v|v| that
+            // limits amplitude (Verge; Fabre & Hirschberg).
+            // Written as k v|v| / (1 + k|v|): quadratic at small amplitude,
+            // bounded by |v| at large amplitude so it stays numerically passive.
+            const float kv = s_.vortexLoss * std::fabs(vWin);
+            jet -= 0.5f * vWin * kv / (1.f + kv);
         } else {
             // Experimental: deflection from the window flow, tanh labium split,
             // drive ~ jet speed. Not yet stable on the long fingerings.
@@ -228,10 +264,19 @@ public:
             jet = s_.jetGain * std::sqrt(breath_) * std::tanh(jx + s_.jetOffset);
         }
         // Jets only amplify over a limited band; one-pole lowpass on the drive.
+        // With jetStrouhal > 0 the band edge follows jet speed (f ~ St U / W):
+        // slow jets can't drive high modes, so soft blowing stays in the low register.
+        if (s_.jetStrouhal > 0.f && breath_ != lastBreathForLp_) {
+            const float fc = s_.jetStrouhal * (ujet > 0.5f ? ujet : 0.5f) / g_.windowLength;
+            jetLpCoef_ = 1.f - std::exp(-2.f * kPi * (fc < 0.45f * fs ? fc : 0.45f * fs) / fs);
+            lastBreathForLp_ = breath_;
+        }
         jetLp_ += jetLpCoef_ * (jet - jetLp_);
-        jet = jetLp_;
+        jetLp2_ += jetLpCoef_ * (jetLp_ - jetLp2_);   // second pole: 12 dB/oct
+        jet = s_.jetLpOrder >= 2 ? jetLp2_ : jetLp_;
         const float pTopOut = windowFilt_.process(aTop) + jet;
         right_[0].write(pTopOut);
+        lastTopOut_ = pTopOut;
 
         // Toneholes: shunt junction between segment k-1 and segment k.
         for (int i = 0; i < kHoles; ++i) {
@@ -245,10 +290,16 @@ public:
         // Foot: unflanged radiation reflectance with lumped losses.
         left_[kHoles].write(s_.footLoss * footFilt_.process(rOut[kHoles]));
 
-        // Radiated sound ~ rate of change of window pressure.
+        // Radiated sound ~ rate of change of window pressure. The source
+        // strength grows with jet speed and frequency; levelComp evens that out
+        // (a mixing choice, not physics) so low notes aren't buried.
         const float pWin = aTop + pTopOut;
-        const float out = dc_.process(pWin - lastWin_);
+        float out = dc_.process(pWin - lastWin_);
         lastWin_ = pWin;
+        if (s_.levelComp > 0.f) {
+            const float drive = (ujet > 0.5f ? ujet : 0.5f) * (s_.sampleRate / jetDelaySamples);
+            out /= std::pow(drive, 2.f * s_.levelComp);
+        }
         return out;
     }
 
@@ -314,6 +365,7 @@ private:
     float c_ = 343.f, rho_ = 1.2f;
     std::array<DelayLine<kDelayN>, kHoles + 1> right_{}, left_{};
     std::array<float, kHoles + 1> segDelay_{};
+    std::array<float, kHoles + 1> segGain_{};
     std::array<Biquad, kHoles> holeFilt_{};
     std::array<float, kHoles> open_{};
     Biquad windowFilt_, footFilt_;
@@ -321,6 +373,7 @@ private:
     DcBlock dc_;
     float breath_ = 0.f, lastWin_ = 0.f;
     float jetLp_ = 0.f, jetLpCoef_ = 0.f;
+    float lastTopOut_ = 0.f, lastSplit_ = 0.f, lastBreathForLp_ = -1.f, jetLp2_ = 0.f;
     uint32_t noise_ = 22222u;
 };
 
