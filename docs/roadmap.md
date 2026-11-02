@@ -17,6 +17,8 @@ Norm's fingering requirements:
 - **Thumb hole as the octave control.** On the WARBL Norm uses the thumb as an octave switch, and it's the easy way into the second octave. Acoustically this is a register vent: a small hole that, when opened, weakens the low register so the tube jumps to the second at the same breath (the recorder thumb, the saxophone and clarinet register keys). The optimizer places and sizes it so an open thumb gives an in-tune second octave on every fingering. One vent can't be ideal for every note (saxophones use two and switch automatically); the virtual instrument can have the thumb open a vent chosen per fingering, as a keyed mechanism would. Partial thumb opening stays physical (pinching).
 - **Seventh finger (R4 pinky) closes to a whole tone below the tonic.** Acoustically: the bore extends below hole 6 with a seventh hole for the pinky, open by default; closing it plays the tone below the tonic (C on a D whistle).
 - Cross fingerings land on Norm's rationalized charts.
+- Thumb and R4 are optional per instrument: the WARBL senses both, and each model chooses whether they act acoustically (vent, seventh hole) or are ignored, so six-hole players are unaffected.
+- Open idea: a "moving" thumb vent, where the vent's effective position and size follow the fingering (keywork no real instrument could carry).
 
 Free variables: hole positions and sizes (fingers are on the WARBL, so no hand-span limits), bore profile, jet and window parameters.
 
