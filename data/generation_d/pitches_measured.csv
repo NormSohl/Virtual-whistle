@@ -1,0 +1,15 @@
+pattern,register,intended_note,measured_hz,cents_vs_12tet,recording_file,start_s,notes
+xxxxxx,1,D5,598.3,+31.4,2026-11-01_two_octaves_diatonic.m4a,11.16,first segment at 10.50 read 601.0 Hz (attack)
+xxxxxo,1,E5,674.2,+38.9,2026-11-01_two_octaves_diatonic.m4a,12.92,
+xxxxoo,1,F#5,750.0,+23.3,2026-11-01_two_octaves_diatonic.m4a,15.14,
+xxxooo,1,G5,803.3,+42.1,2026-11-01_two_octaves_diatonic.m4a,17.52,
+xxoooo,1,A5,905.4,+49.2,2026-11-01_two_octaves_diatonic.m4a,19.87,
+xooooo,1,B5,1034.6,+80.1,2026-11-01_two_octaves_diatonic.m4a,22.06,detector labels C6 -20
+oooooo,1,C#6,1162.6,+82.2,2026-11-01_two_octaves_diatonic.m4a,24.30,detector labels D6 -18
+oxxxxx,2,D6,,,2026-11-01_two_octaves_diatonic.m4a,26.82,not captured: only short blips (1798 Hz, 601 Hz)
+xxxxxo,2,E6,1360.1,+53.7,2026-11-01_two_octaves_diatonic.m4a,29.40,
+xxxxoo,2,F#6,1509.1,+33.7,2026-11-01_two_octaves_diatonic.m4a,31.80,
+xxxooo,2,G6,1618.4,+54.8,2026-11-01_two_octaves_diatonic.m4a,34.25,
+xxoooo,2,A6,1817.0,+55.2,2026-11-01_two_octaves_diatonic.m4a,36.27,
+xooooo,2,B6,2081.5,+90.5,2026-11-01_two_octaves_diatonic.m4a,38.26,
+oooooo,2,C#7,2308.6,+69.7,2026-11-01_two_octaves_diatonic.m4a,40.35,detector labels D7 -30
