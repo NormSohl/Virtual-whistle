@@ -5,7 +5,7 @@ wall,,,,0.32,Norm calipers ("about")
 total_length,295.3,,,,11 5/8 in overall incl. head
 hole_6,35.0,6.0,6.0,,position = lower edge of hole to foot end; round
 hole_5,60.15,6.0,6.0,,assumed same convention (lower edge to foot) - to confirm
-hole_4,73.75,4.75,4.75,,assumed lower edge to foot; RECHECK - photo shows holes evenly spaced (~81 mm expected)
+hole_4,79.5,4.75,4.75,,re-measured 2026-11-01 (first reading 73.75 was off); lower edge to foot
 hole_3,100.65,5.1,5.1,,assumed lower edge to foot
 hole_2,123.6,5.8,5.8,,rechecked; lower edge to foot; round
 hole_1,144.65,4.45,4.45,,rechecked; lower edge to foot; round

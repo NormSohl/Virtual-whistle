@@ -77,3 +77,13 @@ Calibrated + hole 4 position free: bore top 262.9, window scale 0.89, hole 4 low
 - **Calibration on both takes together:** sd 14.7 with two numbers; sd 10.9 with hole 4 free. The model now fits about as well as the player repeats.
 - **Hole 4 again lands at ~78 mm** (78.1 here, 77.6 from take 1) instead of the measured 73.75. Two independent takes agree, so a re-measure of hole 4 is the most useful next check.
 - Second-octave D (top hole vented) comes out ~26 cents flat in the model relative to the real whistle: the vented-octave fingering is a good target for the next round of model work.
+
+## Update: hole 4 re-measured
+Norm re-measured hole 4: lower edge 79.5 mm from the foot (first reading 73.75 was off). The model had inferred 77.6 and 78.1 mm from the two takes, without being told.
+
+With the corrected geometry, both takes (26 notes):
+- **Uncalibrated** (bore top at the labium, 30 °C): mean -13 cents, sd 11.6.
+- **Calibrated** (2 numbers): bore top 263.4 mm from foot (the measured labium is 263.5), window scale 0.92 (1.0 is uncalibrated). Residual sd 11.3, max 24 cents, the same size as the take-to-take spread (sd 8.7 per note, plus a 12.5-cent overall shift between takes).
+- Freeing hole 4 now barely helps (sd 10.9, settles at 78.2 mm), so the geometry is consistent.
+
+**Conclusion:** with measured geometry and near-default calibration, the impedance model reproduces this real whistle's tuning to within the repeatability of the recordings. Phase 2 is done.

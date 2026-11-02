@@ -18,7 +18,7 @@ from .whistle import HoleMM, WhistleMM, cents, predict
 ROOT = Path(__file__).resolve().parent.parent
 
 # Holes 1-6: lower edge to foot (mm), diameter (mm), from geometry_measured.csv.
-EDGE = [144.65, 123.6, 100.65, 73.75, 60.15, 35.0]
+EDGE = [144.65, 123.6, 100.65, 79.5, 60.15, 35.0]
 DIA = [4.45, 5.8, 5.1, 4.75, 6.0, 6.0]
 LABIUM_FROM_FOOT = 263.5
 BORE = 11.8
