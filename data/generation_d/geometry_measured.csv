@@ -10,4 +10,4 @@ hole_3,100.65,5.1,5.1,,assumed lower edge to foot
 hole_2,123.6,5.8,5.8,,rechecked; lower edge to foot; round
 hole_1,144.65,4.45,4.45,,rechecked; lower edge to foot; round
 window,,5.0,7.7,,diameter_a = length along the axis ("height" 5 mm), diameter_b = width 7.7 mm; labium edge 263.5 mm from foot (10 3/8 in +-1/32, Norm); window spans 263.5-268.5 from foot, centre 266.0
-windway_exit,,,,,block face not parallel with the window; set back at least 1 mm from the window's upstream edge (Norm). Jet length to labium therefore >= 6 mm. Borescope check possible.
+block_face,,,,,windway itself exits at the window's upstream edge (jet path unchanged); the block face below the windway floor is not parallel and sits >= 1 mm further toward the mouthpiece than the window, leaving a small closed pocket of bore above the window (Norm). Borescope check possible.
