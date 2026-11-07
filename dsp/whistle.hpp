@@ -12,6 +12,7 @@
 // construction. Same source runs offline (render/) and on the Daisy Seed3.
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -19,6 +20,10 @@
 namespace vw {
 
 constexpr float kPi = 3.14159265358979323846f;
+// Closed-hole leak, rad/s: where the hole filter's slow pole stops as the hole closes (time constant
+// ~1 s), stable in float32 and far below audio frequencies; a matching zero cancels it when fully
+// closed. Same value as VW_HOLE_LEAK in the JS port.
+constexpr double kHoleLeak = 1.0;
 
 // ------------------------------------------------------------- delay line
 
@@ -342,17 +347,22 @@ private:
         };
         const double tauC = (Sh / Sb) * (t + ti(b)) / c_;  // closed: Ys/Y0 = s tauC
         (void)delta;
-        if (o <= 1e-4) {
-            holeFilt_[i].setAnalog(1, 0, 0, 1, tauC / 2.0, 0, s_.sampleRate);
-            return;
-        }
-        const double bo = b * std::sqrt(o);
+        // One filter form all the way from open to fully closed. A closed hole is the o -> 0 limit of
+        // the open form (the slow pole and the zero at s = 0 meet); switching to a separate first-order
+        // closed form dumped the slow pole's stored state into the bore as a click every time a
+        // finger closed a hole (decisions.md, 2026-11-07). Below the leak level the slow pole stops at
+        // s = -kHoleLeak (inside the unit circle even in float32) and a zero moves from s = 0 to meet
+        // it: fully closed, they cancel and the response is the closed hole's, 1 / (1 + s tauC / 2).
+        const double oo = o <= 1e-4 ? 0.0 : o;
+        const double bo = b * std::sqrt(oo);
         const double So = kPi * bo * bo;
         if (!s_.radiation) {
             const double te = t + ti(bo) + 0.61 * bo;
-            const double tauO = (Sb / So) * te / c_;        // open part: Zs/Z0 = s tauO
-            // H = 2 s tauO / (1 + 2 s tauO + (1-o) s^2 tauC tauO)
-            holeFilt_[i].setAnalog(0, 2 * tauO, 0, 1, 2 * tauO, (1.0 - o) * tauC * tauO, s_.sampleRate);
+            const double invTauO = (So / Sb) * c_ / te;       // open part: Zs/Z0 = s / invTauO
+            // H = 2 s / (1/tauO + 2 s + (1-o) s^2 tauC)
+            const double leak = 2 * kHoleLeak;
+            holeFilt_[i].setAnalog(std::max(0.0, leak - invTauO), 2, 0, std::max(invTauO, leak), 2, (1.0 - oo) * tauC,
+                                   s_.sampleRate);
             return;
         }
         // Open part with radiation: inner inertance in series with the radiation
@@ -364,7 +374,9 @@ private:
         const double tauR = 0.61 * bo / c_;
         const double t1 = tauI + tauR, t2 = tauI * tauR;
         // H = 1 / (1 + Ys/(2 Y0) + (1-o) s tauC / 2); the closed part's s^3 term is dropped.
-        holeFilt_[i].setAnalog(0, 2 * t1, 2 * t2, A, 2 * t1 + A * tauR, 2 * t2 + (1.0 - o) * tauC * t1,
+        const double leak = 2 * t1 * kHoleLeak;
+        const double a0 = std::max(A, leak), b0 = std::max(0.0, leak - A);
+        holeFilt_[i].setAnalog(b0, 2 * t1, 2 * t2, a0, 2 * t1 + A * tauR, 2 * t2 + (1.0 - oo) * tauC * t1,
                                s_.sampleRate);
     }
 

@@ -172,18 +172,18 @@ int main(int argc, char** argv) {
     std::vector<float> out(n);
     const int block = 32;  // control-rate updates, like a real-time callback
     size_t r = 0;
+    // Breath at control rate (every 32 samples); hole openness every sample, because a hole's filter
+    // changes fastest in the last per cent of closing and coarse steps there click (2026-11-07).
     for (size_t i = 0; i < n; ++i) {
-        if (i % block == 0) {
-            const double t = double(i) / sr;
-            while (r + 1 < rows.size() - 1 && rows[r + 1].t <= t) ++r;
-            const Row& A = rows[r];
-            const Row& B = rows[r + 1];
-            const double span = B.t - A.t;
-            const float u = span > 0 ? float((t - A.t) / span) : 0.f;
-            const float uc = u < 0 ? 0 : (u > 1 ? 1 : u);
-            for (int h = 0; h < nCols; ++h) w.setOpenness(h, A.o[h] + (B.o[h] - A.o[h]) * uc);
-            w.setBreath(A.breath + (B.breath - A.breath) * uc);
-        }
+        const double t = double(i) / sr;
+        while (r + 1 < rows.size() - 1 && rows[r + 1].t <= t) ++r;
+        const Row& A = rows[r];
+        const Row& B = rows[r + 1];
+        const double span = B.t - A.t;
+        const float u = span > 0 ? float((t - A.t) / span) : 0.f;
+        const float uc = u < 0 ? 0 : (u > 1 ? 1 : u);
+        for (int h = 0; h < nCols; ++h) w.setOpenness(h, A.o[h] + (B.o[h] - A.o[h]) * uc);
+        if (i % block == 0) w.setBreath(A.breath + (B.breath - A.breath) * uc);
         out[i] = w.process();
     }
     // Normalize peak to -3 dBFS so files are comfortable to listen to.

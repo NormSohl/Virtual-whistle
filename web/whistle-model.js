@@ -51,6 +51,9 @@ const VW_DEFAULT_SETTINGS = {
 };
 
 const VW_MAX_HOLES = 9;
+// Closed-hole leak, rad/s: where the hole filter's slow pole stops as the hole closes (time constant ~1 s),
+// stable in float32 and far below audio frequencies; a matching zero cancels it when fully closed.
+const VW_HOLE_LEAK = 1.0;
 
 class VwWhistle {
   // g: {boreRadius, length, holePos[n], holeRadius[n], chimney[n], windowLength, windowWidth, windowWall, windowScale} (metres)
@@ -159,11 +162,16 @@ class VwWhistle {
     const Sb = Math.PI * a * a, Sh = Math.PI * b * b;
     const ti = (br) => { const d = br / a; return br * (0.82 - 0.193 * d - 1.09 * d * d + 1.27 * d ** 3 - 0.71 * d ** 4); };
     const tauC = (Sh / Sb) * (t + ti(b)) / c;
-    if (o <= 1e-4) { this.holeFilt[i].setAnalog(1, 0, 0, 1, tauC / 2, 0, fs); return; }
-    const bo = b * Math.sqrt(o), So = Math.PI * bo * bo;
+    // One filter form from open to fully closed (see C++ designHole): below the leak level the slow pole
+    // stops at s = -VW_HOLE_LEAK and a zero moves from s = 0 to meet it, so a closed hole is the old
+    // closed response (pole and zero cancel) and nothing switches.
+    const oo = o <= 1e-4 ? 0 : o;
+    const bo = b * Math.sqrt(oo), So = Math.PI * bo * bo;
     const A = So / Sb, tauI = (t + ti(bo)) / c, tauR = 0.61 * bo / c;
     const t1 = tauI + tauR, t2 = tauI * tauR;
-    this.holeFilt[i].setAnalog(0, 2 * t1, 2 * t2, A, 2 * t1 + A * tauR, 2 * t2 + (1 - o) * tauC * t1, fs);
+    const leak = 2 * t1 * VW_HOLE_LEAK;
+    const a0 = Math.max(A, leak), b0 = Math.max(0, leak - A);
+    this.holeFilt[i].setAnalog(b0, 2 * t1, 2 * t2, a0, 2 * t1 + A * tauR, 2 * t2 + (1 - oo) * tauC * t1, fs);
   }
 
   designWindow() {
@@ -195,4 +203,4 @@ function vwGenerationD() {
   };
 }
 
-if (typeof module !== 'undefined') module.exports = { VwWhistle, vwGenerationD, VW_DEFAULT_SETTINGS, VW_MAX_HOLES };
+if (typeof module !== 'undefined') module.exports = { VwWhistle, vwGenerationD, VW_DEFAULT_SETTINGS, VW_MAX_HOLES, VW_HOLE_LEAK };

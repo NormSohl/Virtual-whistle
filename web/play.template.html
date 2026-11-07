@@ -296,12 +296,9 @@ class WhistleProc extends AudioWorkletProcessor {
     const out = outputs[0][0];
     const n = out.length;
     // Fingers move over ~15 ms and breath over ~8 ms: instant changes click.
-    const fStep = n / (0.015 * sampleRate), bStep = n / (0.008 * sampleRate);
-    for (let i = 0; i < 6; i++) {
-      const d = this.tHoles[i] - this.cHoles[i];
-      this.cHoles[i] += Math.abs(d) <= fStep ? d : Math.sign(d) * fStep;
-      this.w.setOpenness(i, this.cHoles[i]);
-    }
+    // Fingers ramp per model sample (a hole's filter changes fastest just before it closes, and
+    // block-sized steps there click); breath per block.
+    const fStep = 1 / (0.015 * sampleRate * this.factor), bStep = n / (0.008 * sampleRate);
     const db = this.tBreath - this.cBreath;
     // Up: scaled to the target so second-octave attacks are as quick as low ones. Down: scaled to the
     // current level, so any release takes ~8 ms (a tongue stop) instead of sliding through the low register.
@@ -310,7 +307,13 @@ class WhistleProc extends AudioWorkletProcessor {
     this.w.setBreath(this.cBreath);
     for (let k = 0; k < n; k++) {
       let acc = 0;
-      for (let j = 0; j < this.factor; j++) acc += this.w.process();
+      for (let j = 0; j < this.factor; j++) {
+        for (let i = 0; i < 6; i++) {
+          const d = this.tHoles[i] - this.cHoles[i];
+          if (d !== 0) { this.cHoles[i] += Math.abs(d) <= fStep ? d : Math.sign(d) * fStep; this.w.setOpenness(i, this.cHoles[i]); }
+        }
+        acc += this.w.process();
+      }
       out[k] = Math.tanh(this.gain * acc / this.factor);   // soft limit
     }
     for (let c = 1; c < outputs[0].length; c++) outputs[0][c].set(out);
@@ -349,10 +352,16 @@ async function start() {
       const L = ev.outputBuffer.getChannelData(0), R = ev.outputBuffer.getChannelData(1);
       for (let b = 0; b < L.length; b += 32) {
         if (rec) onRecBlock({ data: { t: (spFrame + b) / ctx.sampleRate, o: cur.holes.slice(), b: cur.breath, a: null } });
-        const f = 32 / (0.015 * ctx.sampleRate), d0 = sp.target.breath - cur.breath, s = 32 / (0.008 * ctx.sampleRate) * Math.max(0.3, d0 > 0 ? sp.target.breath : cur.breath);
-        for (let i = 0; i < 6; i++) { const d = sp.target.holes[i] - cur.holes[i]; cur.holes[i] += Math.abs(d) <= f ? d : Math.sign(d) * f; w.setOpenness(i, cur.holes[i]); }
+        const f = 1 / (0.015 * ctx.sampleRate * factor), d0 = sp.target.breath - cur.breath, s = 32 / (0.008 * ctx.sampleRate) * Math.max(0.3, d0 > 0 ? sp.target.breath : cur.breath);
         const d = sp.target.breath - cur.breath; cur.breath += Math.abs(d) <= s ? d : Math.sign(d) * s; w.setBreath(cur.breath);
-        for (let k = b; k < b + 32; k++) { let a = 0; for (let j = 0; j < factor; j++) a += w.process(); const y = Math.tanh(0.0006 * a / factor); L[k] = y; R[k] = y; }
+        for (let k = b; k < b + 32; k++) {
+          let a = 0;
+          for (let j = 0; j < factor; j++) {
+            for (let i = 0; i < 6; i++) { const dh = sp.target.holes[i] - cur.holes[i]; if (dh !== 0) { cur.holes[i] += Math.abs(dh) <= f ? dh : Math.sign(dh) * f; w.setOpenness(i, cur.holes[i]); } }
+            a += w.process();
+          }
+          const y = Math.tanh(0.0006 * a / factor); L[k] = y; R[k] = y;
+        }
       }
       if (rec) rec.audio.push(L.slice());
       spFrame += L.length;
