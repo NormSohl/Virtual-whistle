@@ -132,6 +132,12 @@ button.key:focus-visible, .btn:focus-visible { outline: 3px solid var(--covered)
         <button class="btn" id="startBtn" type="button">Start sound</button>
         <button class="btn ghost" id="midiBtn" type="button">Connect WARBL</button>
         <button class="btn ghost" id="recBtn" type="button">Record</button>
+        <label class="note" style="display:flex;gap:.4em;align-items:center">Wall losses
+          <select id="wallSel">
+            <option value="off">Off (Generation D)</option>
+            <option value="release">Release only</option>
+            <option value="full">Full (jet not retuned)</option>
+          </select></label>
       </div>
       <dl class="readout">
         <dt>Fingering</dt><dd id="patOut">xxxxxx</dd>
@@ -289,6 +295,7 @@ class WhistleProc extends AudioWorkletProcessor {
     this.rec = false;
     this.port.onmessage = (e) => {
       if ('rec' in e.data) { this.rec = e.data.rec; return; }
+      if ('wall' in e.data) { applyWall(this.w, e.data.wall); this.gain = 0.0006; return; }
       this.tHoles = e.data.holes; this.tBreath = e.data.breath;
     };
   }
@@ -323,6 +330,12 @@ class WhistleProc extends AudioWorkletProcessor {
   }
 }
 registerProcessor('whistle', WhistleProc);
+function applyWall(w, mode) {
+  // Experiment (2026-11-07): physical wall losses, only in note tails ('release') or always ('full',
+  // jet gain raised to restore level; pitch pulls sharp with breath until the jet is retuned).
+  w.s.jetGain = mode === 'full' ? -300 : VW_DEFAULT_SETTINGS.jetGain;
+  w.setWallLoss(mode === 'off' ? 0 : 1, mode === 'release');
+}
 `;
 
 function message() { return { holes: holes.map((h) => 1 - h), breath }; }   // model wants openness
@@ -345,6 +358,7 @@ async function start() {
     const factor = Math.max(1, Math.round(96000 / ctx.sampleRate));
     const w = new VwWhistle(vwGenerationD(), { sampleRate: ctx.sampleRate * factor });
     sp = ctx.createScriptProcessor(512, 0, 2);
+    sp.whistle = w;
     sp.target = message();
     const cur = { holes: [0, 0, 0, 0, 0, 0], breath: 0 };
     let spFrame = 0;
@@ -370,6 +384,7 @@ async function start() {
     document.getElementById('engineOut').textContent = 'ScriptProcessor fallback, ' + ctx.sampleRate + ' Hz (worklet: ' + (err && err.name || 'error') + ')';
     console.warn('[audio] AudioWorklet unavailable, using ScriptProcessor:', err);
   }
+  sendWall();
   chip.textContent = 'Audio on'; chip.className = 'chip on';
   document.getElementById('startBtn').textContent = 'Sound on';
   send();
@@ -426,6 +441,17 @@ async function toggleRecord() {
   download(new Blob(['t,o1,o2,o3,o4,o5,o6,breath\n' + r.rows.join('\n') + '\n'], { type: 'text/csv' }), base + '.csv');
 }
 document.getElementById('recBtn').addEventListener('click', toggleRecord);
+
+let wallMode = 'off';
+function sendWall() {
+  if (node) node.port.postMessage({ wall: wallMode });
+  if (sp && sp.whistle) applyWallMain(sp.whistle, wallMode);
+}
+function applyWallMain(w, mode) {
+  w.s.jetGain = mode === 'full' ? -300 : VW_DEFAULT_SETTINGS.jetGain;
+  w.setWallLoss(mode === 'off' ? 0 : 1, mode === 'release');
+}
+document.getElementById('wallSel').addEventListener('change', (e) => { wallMode = e.target.value; sendWall(); });
 
 // ---------------------------------------------------------------- WARBL (Web MIDI)
 // Two ways in, best first:

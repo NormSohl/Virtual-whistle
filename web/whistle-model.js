@@ -39,6 +39,48 @@ class VwBiquad {
   }
 }
 
+// First-order filter with unity gain at DC, for distributed wall losses: y = k (x + b x1) - a y1.
+class VwOnePole {
+  constructor() { this.k = 1; this.b = 0; this.a = 0; this.x1 = 0; this.y1 = 0; }
+  process(x) { const y = this.k * (x + this.b * this.x1) - this.a * this.y1; this.x1 = x; this.y1 = y; return y; }
+}
+
+// Fit k (1 + b z^-1) / (1 + a z^-1), k = (1 + a) / (1 + b), to the wall-loss magnitude exp(-alpha(f) len)
+// with alpha = 3e-5 sqrt(f) / radius (Np/m; Fletcher & Rossing), least squares on log magnitude, 100 Hz - 8 kHz.
+function vwFitWallLoss(len, radius, scale, fs) {
+  const fr = []; for (let f = 100; f <= 8000; f *= 1.15) fr.push(f);
+  const target = fr.map((f) => -scale * 3e-5 * Math.sqrt(f) / radius * len);
+  const err = ([a, b]) => {
+    if (Math.abs(a) >= 0.999 || Math.abs(b) >= 0.999) return 1e9;
+    const k = (1 + a) / (1 + b); let e = 0;
+    for (let i = 0; i < fr.length; i++) {
+      const w = 2 * Math.PI * fr[i] / fs, c = Math.cos(w);
+      const m2 = k * k * (1 + b * b + 2 * b * c) / (1 + a * a + 2 * a * c);
+      const d = 0.5 * Math.log(m2) - target[i]; e += d * d;
+    }
+    return e;
+  };
+  // Nelder-Mead from a gentle high-shelf start.
+  let pts = [[-0.5, -0.49], [-0.6, -0.59], [-0.5, -0.48]].map((x) => [x, err(x)]);
+  for (let it = 0; it < 600; it++) {
+    pts.sort((u, v) => u[1] - v[1]);
+    const [best, mid, worst] = pts;
+    const c = [(best[0][0] + mid[0][0]) / 2, (best[0][1] + mid[0][1]) / 2];
+    const at = (t) => [c[0] + t * (worst[0][0] - c[0]), c[1] + t * (worst[0][1] - c[1])];
+    const r = at(-1), er = err(r);
+    if (er < best[1]) { const e2 = at(-2), ee = err(e2); pts[2] = ee < er ? [e2, ee] : [r, er]; }
+    else if (er < mid[1]) pts[2] = [r, er];
+    else {
+      const cc = at(0.5), ec = err(cc);
+      if (ec < worst[1]) pts[2] = [cc, ec];
+      else pts = pts.map(([x], i) => { if (i === 0) return pts[0]; const y = [(x[0] + best[0][0]) / 2, (x[1] + best[0][1]) / 2]; return [y, err(y)]; });
+    }
+  }
+  pts.sort((u, v) => u[1] - v[1]);
+  const [a, b] = pts[0][0];
+  return { k: (1 + a) / (1 + b), a, b, rms: Math.sqrt(pts[0][1] / fr.length) };
+}
+
 class VwDc {
   constructor() { this.x1 = 0; this.y1 = 0; }
   process(x) { const y = x - this.x1 + 0.995 * this.y1; this.x1 = x; this.y1 = y; return y; }
@@ -48,6 +90,8 @@ const VW_DEFAULT_SETTINGS = {
   sampleRate: 96000, tempC: 30, dispersion: 0.991, footLoss: 1.0, radiation: true,
   jetRatio: 1.0, jetReflection: 1.0, jetGain: -100, noiseGain: 0.002, jetOffset: 0.1,
   jetStrouhal: 0.2, jetLpOrder: 2, maxPressurePa: 1500, jetDelayRise: 0.003,
+  wallLoss: 0,   // viscothermal wall losses along the bore: 0 off (Generation D as calibrated), 1 physical strength
+  wallReleaseOnly: false,   // experiment: apply wall losses only while breath is ~0 (note tails), not while playing
 };
 
 const VW_MAX_HOLES = 9;
@@ -81,6 +125,10 @@ class VwWhistle {
     this.lastTopOut = 0; this.lastSplit = 0; this.lastBreathForLp = -1; this.jdSmooth = 2000;
     this.noise = 22222 >>> 0;
     this.rOut = new Float64Array(this.nh + 1); this.lOut = new Float64Array(this.nh + 1);
+    this.segLen = []; for (let k = 0; k < this.nh + 1; k++) this.segLen.push(x[k + 1] - x[k]);
+    this.wallR = Array.from({ length: this.nh + 1 }, () => new VwOnePole());
+    this.wallL = Array.from({ length: this.nh + 1 }, () => new VwOnePole());
+    this.setWallLoss(S.wallLoss);
     this.designWindow(); this.designFoot();
     for (let i = 0; i < this.nh; i++) this.setOpenness(i, 0, true);
   }
@@ -94,6 +142,20 @@ class VwWhistle {
   }
 
   setBreath(b) { this.breath = b < 0 ? 0 : b; }
+
+  // Wall-loss strength: 0 off, 1 physical (alpha = 3e-5 sqrt(f) / radius). Can change while playing.
+  setWallLoss(scale, releaseOnly = this.s.wallReleaseOnly) {
+    this.s.wallReleaseOnly = !!releaseOnly;
+    if (this.wallMix === undefined) this.wallMix = 0;
+    this.wallScale = scale > 0 ? scale : 0;
+    this.wallFit = [];
+    if (!this.wallScale) return;
+    for (let k = 0; k < this.nh + 1; k++) {
+      const f = vwFitWallLoss(this.segLen[k], this.g.boreRadius, this.wallScale, this.s.sampleRate);
+      for (const flt of [this.wallR[k], this.wallL[k]]) { flt.k = f.k; flt.a = f.a; flt.b = f.b; }
+      this.wallFit.push(f);
+    }
+  }
 
   white() {
     let n = this.noise;
@@ -109,6 +171,20 @@ class VwWhistle {
     for (let k = 0; k < this.nh + 1; k++) {
       this.rOut[k] = this.right[k].read(this.segDelay[k]);
       this.lOut[k] = this.left[k].read(this.segDelay[k]);
+    }
+    if (this.wallScale) {
+      // Release-only mode crossfades the losses in over ~10 ms once breath is ~0, and out as soon as it returns.
+      let m = 1;
+      if (S.wallReleaseOnly) {
+        const target = this.breath < 0.01 ? 1 : 0, step = 1 / (0.01 * S.sampleRate);
+        this.wallMix += Math.max(-step, Math.min(step, target - this.wallMix));
+        m = this.wallMix;
+      }
+      for (let k = 0; k < this.nh + 1; k++) {
+        const r = this.wallR[k].process(this.rOut[k]), l = this.wallL[k].process(this.lOut[k]);
+        this.rOut[k] += m * (r - this.rOut[k]);
+        this.lOut[k] += m * (l - this.lOut[k]);
+      }
     }
     const aTop = this.lOut[0];
     const pressurePa = this.breath * S.maxPressurePa;
@@ -203,4 +279,4 @@ function vwGenerationD() {
   };
 }
 
-if (typeof module !== 'undefined') module.exports = { VwWhistle, vwGenerationD, VW_DEFAULT_SETTINGS, VW_MAX_HOLES, VW_HOLE_LEAK };
+if (typeof module !== 'undefined') module.exports = { VwWhistle, vwGenerationD, VW_DEFAULT_SETTINGS, VW_MAX_HOLES, VW_HOLE_LEAK, vwFitWallLoss };
