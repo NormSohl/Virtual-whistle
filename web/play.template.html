@@ -392,19 +392,38 @@ async function connectMidi() {
     if (!ctx) start();
   } catch (e) { chip.textContent = 'MIDI blocked'; chip.className = 'chip err'; }
 }
-function onRawFrame(d) {
-  // d: full SysEx including F0 ... F7
+// Stream health, shown on the MIDI chip once a second: frames/s, frames lost (seq gaps),
+// malformed frames (wrong length), and the longest gap between frames (ms, host timestamps).
+const rawStats = { frames: 0, dropped: 0, bad: 0, lastSeq: -1, lastT: 0, maxGap: 0, totalFrames: 0, totalDropped: 0, totalBad: 0 };
+function showRawStats() {
+  const s = rawStats;
+  s.totalFrames += s.frames; s.totalDropped += s.dropped; s.totalBad += s.bad;
+  const chip = document.getElementById('midiChip');
+  chip.textContent = `WARBL: raw stream · ${s.frames}/s · lost ${s.dropped} · bad ${s.bad} · max gap ${s.maxGap.toFixed(1)} ms`;
+  chip.title = `Totals: ${s.totalFrames} frames, ${s.totalDropped} lost, ${s.totalBad} bad`;
+  console.log('[raw]', chip.textContent, '|', chip.title);
+  s.frames = 0; s.dropped = 0; s.bad = 0; s.maxGap = 0;
+}
+function onRawFrame(d, t) {
+  // d: full SysEx including F0 ... F7; t: event timestamp (ms)
   const u14 = (i) => d[i] | (d[i + 1] << 7);
   if (d[4] === 0x02 && d.length === 29) {          // F0 7D W R 02 format version patch c0..c8 ambient F7
     rawCal = []; for (let h = 0; h < 9; h++) rawCal.push(Math.max(1, u14(8 + 2 * h)));
     rawAmbient = u14(26) - 8192;
     return;
   }
-  if (d[4] !== 0x01 || d.length !== 27) return;     // F0 7D W R 01 seq h0..h8 p F7
+  if (d[4] === 0x01 && d.length !== 27) { rawStats.bad++; return; }   // truncated or merged frame
+  if (d[4] !== 0x01) return;                          // F0 7D W R 01 seq h0..h8 p F7
+  rawStats.frames++;
+  if (rawStats.lastSeq >= 0) rawStats.dropped += (d[5] - rawStats.lastSeq - 1 + 128) % 128;
+  rawStats.lastSeq = d[5];
+  if (rawStats.lastT > 0) rawStats.maxGap = Math.max(rawStats.maxGap, t - rawStats.lastT);
+  rawStats.lastT = t;
   if (!rawSeen) {
     rawSeen = true;
     const chip = document.getElementById('midiChip'); chip.textContent = 'WARBL: raw stream'; chip.className = 'chip on';
     if (!rawCal) midiOuts.forEach((o) => o.send([0xB6, 106, 81]));
+    setInterval(showRawStats, 1000);
   }
   if (!rawCal) return;
   WHISTLE_BITS.forEach((bit, i) => {
@@ -419,7 +438,7 @@ function onRawFrame(d) {
 }
 function onMidi(ev) {
   const d = ev.data;
-  if (d[0] === 0xF0) { if (d[1] === 0x7D && d[2] === 0x57 && d[3] === 0x52) onRawFrame(d); return; }
+  if (d[0] === 0xF0) { if (d[1] === 0x7D && d[2] === 0x57 && d[3] === 0x52) onRawFrame(d, ev.timeStamp); return; }
   if (rawSeen) return;
   const [st, d1, d2] = d;
   if ((st & 0xF0) !== 0xB0 || (st & 0x0F) !== 6) return;   // CCs on channel 7
