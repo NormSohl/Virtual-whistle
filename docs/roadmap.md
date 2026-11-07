@@ -1,7 +1,8 @@
 # Roadmap
 
 ## Now
-- WARBL raw stream on hardware: fork, flash, test with `web/play.html` in Chrome (see [warbl-raw-stream.md](warbl-raw-stream.md)).
+- Done 2026-11-07: WARBL raw stream on hardware, 502 frames/s, 0 lost, max gap 3.6 ms (see [warbl-raw-stream.md](warbl-raw-stream.md)).
+- Next: per-hole coverage curves if half-holing feels uneven; explain the blue LED; design the thumb register vent and R4 seventh hole.
 
 ## Ideal whistle (playability-optimized)
 The Generation D model stays as is, a character model. Alongside it, an "ideal whistle" with the same physics and a geometry the optimizer picks for playability instead of fidelity to a real instrument.
