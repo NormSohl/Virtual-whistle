@@ -131,6 +131,7 @@ button.key:focus-visible, .btn:focus-visible { outline: 3px solid var(--covered)
       <div class="row">
         <button class="btn" id="startBtn" type="button">Start sound</button>
         <button class="btn ghost" id="midiBtn" type="button">Connect WARBL</button>
+        <button class="btn ghost" id="recBtn" type="button">Record</button>
       </div>
       <dl class="readout">
         <dt>Fingering</dt><dd id="patOut">xxxxxx</dd>
@@ -483,7 +484,11 @@ class WhistleProc extends AudioWorkletProcessor {
     this.tHoles = [0,0,0,0,0,0]; this.cHoles = [0,0,0,0,0,0];
     this.tBreath = 0; this.cBreath = 0;
     this.gain = 0.0006;   // raw model peaks ~1100 at full second-octave breath
-    this.port.onmessage = (e) => { this.tHoles = e.data.holes; this.tBreath = e.data.breath; };
+    this.rec = false;
+    this.port.onmessage = (e) => {
+      if ('rec' in e.data) { this.rec = e.data.rec; return; }
+      this.tHoles = e.data.holes; this.tBreath = e.data.breath;
+    };
   }
   process(inputs, outputs) {
     const out = outputs[0][0];
@@ -507,6 +512,8 @@ class WhistleProc extends AudioWorkletProcessor {
       out[k] = Math.tanh(this.gain * acc / this.factor);   // soft limit
     }
     for (let c = 1; c < outputs[0].length; c++) outputs[0][c].set(out);
+    // Recording: the controls the model actually used this block (after smoothing) plus its audio.
+    if (this.rec) this.port.postMessage({ t: currentFrame / sampleRate, o: this.cHoles.slice(), b: this.cBreath, a: out.slice() });
     return true;
   }
 }
@@ -526,6 +533,7 @@ async function start() {
     await ctx.audioWorklet.addModule(url);
     node = new AudioWorkletNode(ctx, 'whistle', { outputChannelCount: [2] });
     node.connect(ctx.destination);
+    node.port.onmessage = onRecBlock;
     document.getElementById('engineOut').textContent = 'AudioWorklet, ' + ctx.sampleRate + ' Hz (model at ' + Math.round(96000 / ctx.sampleRate) * ctx.sampleRate + ' Hz)';
   } catch (err) {
     // Fallback where worklets are blocked: ScriptProcessor running the same model.
@@ -551,6 +559,58 @@ async function start() {
   send();
 }
 document.getElementById('startBtn').addEventListener('click', start);
+
+// ---------------------------------------------------------------- Recording
+// Record saves two files to Downloads: the model's audio (32-bit float WAV, mono) and the
+// controls it used (CSV "t,o1..o6,breath", one row per audio block, after the page's
+// finger/breath smoothing), which render/render can replay offline.
+let rec = null;
+function onRecBlock(e) {
+  if (!rec) return;
+  const m = e.data;
+  if (rec.t0 === null) rec.t0 = m.t;
+  rec.audio.push(m.a);
+  rec.rows.push([(m.t - rec.t0).toFixed(6), ...m.o.map((v) => v.toFixed(5)), m.b.toFixed(5)].join(','));
+  const secs = Math.floor(m.t - rec.t0);
+  if (secs !== rec.shown) { rec.shown = secs; document.getElementById('recBtn').textContent = 'Stop (' + secs + ' s)'; }
+}
+function wavFloat32(blocks, sr) {
+  const n = blocks.reduce((a, b) => a + b.length, 0);
+  const buf = new ArrayBuffer(44 + 4 * n), v = new DataView(buf);
+  const str = (o, x) => { for (let i = 0; i < x.length; i++) v.setUint8(o + i, x.charCodeAt(i)); };
+  str(0, 'RIFF'); v.setUint32(4, 36 + 4 * n, true); str(8, 'WAVE'); str(12, 'fmt ');
+  v.setUint32(16, 16, true); v.setUint16(20, 3, true); v.setUint16(22, 1, true);   // IEEE float, mono
+  v.setUint32(24, sr, true); v.setUint32(28, sr * 4, true); v.setUint16(32, 4, true); v.setUint16(34, 32, true);
+  str(36, 'data'); v.setUint32(40, 4 * n, true);
+  let o = 44; for (const b of blocks) for (let i = 0; i < b.length; i++, o += 4) v.setFloat32(o, b[i], true);
+  return new Blob([buf], { type: 'audio/wav' });
+}
+function download(blob, name) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+async function toggleRecord() {
+  const btn = document.getElementById('recBtn');
+  if (!rec) {
+    if (!ctx) await start();
+    if (!node) { btn.textContent = 'Record needs AudioWorklet'; return; }
+    rec = { t0: null, audio: [], rows: [], shown: -1, sr: ctx.sampleRate, input: rawSeen ? 'raw' : 'stock' };
+    node.port.postMessage({ rec: true });
+    btn.textContent = 'Stop (0 s)'; btn.classList.remove('ghost');
+    return;
+  }
+  node.port.postMessage({ rec: false });
+  const r = rec; rec = null;
+  btn.textContent = 'Record'; btn.classList.add('ghost');
+  if (!r.audio.length) return;
+  const d = new Date(), z = (x) => String(x).padStart(2, '0');
+  const stamp = d.getFullYear() + z(d.getMonth() + 1) + z(d.getDate()) + '-' + z(d.getHours()) + z(d.getMinutes()) + z(d.getSeconds());
+  const base = 'vw-take-' + stamp + '-' + r.input + '-' + r.sr;
+  download(wavFloat32(r.audio, r.sr), base + '.wav');
+  download(new Blob(['t,o1,o2,o3,o4,o5,o6,breath\n' + r.rows.join('\n') + '\n'], { type: 'text/csv' }), base + '.csv');
+}
+document.getElementById('recBtn').addEventListener('click', toggleRecord);
 
 // ---------------------------------------------------------------- WARBL (Web MIDI)
 // Two ways in, best first:
