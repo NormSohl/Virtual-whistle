@@ -344,17 +344,22 @@ async function start() {
     sp = ctx.createScriptProcessor(512, 0, 2);
     sp.target = message();
     const cur = { holes: [0, 0, 0, 0, 0, 0], breath: 0 };
+    let spFrame = 0;
     sp.onaudioprocess = (ev) => {
       const L = ev.outputBuffer.getChannelData(0), R = ev.outputBuffer.getChannelData(1);
       for (let b = 0; b < L.length; b += 32) {
+        if (rec) onRecBlock({ data: { t: (spFrame + b) / ctx.sampleRate, o: cur.holes.slice(), b: cur.breath, a: null } });
         const f = 32 / (0.015 * ctx.sampleRate), d0 = sp.target.breath - cur.breath, s = 32 / (0.008 * ctx.sampleRate) * Math.max(0.3, d0 > 0 ? sp.target.breath : cur.breath);
         for (let i = 0; i < 6; i++) { const d = sp.target.holes[i] - cur.holes[i]; cur.holes[i] += Math.abs(d) <= f ? d : Math.sign(d) * f; w.setOpenness(i, cur.holes[i]); }
         const d = sp.target.breath - cur.breath; cur.breath += Math.abs(d) <= s ? d : Math.sign(d) * s; w.setBreath(cur.breath);
         for (let k = b; k < b + 32; k++) { let a = 0; for (let j = 0; j < factor; j++) a += w.process(); const y = Math.tanh(0.0006 * a / factor); L[k] = y; R[k] = y; }
       }
+      if (rec) rec.audio.push(L.slice());
+      spFrame += L.length;
     };
     sp.connect(ctx.destination);
-    document.getElementById('engineOut').textContent = 'ScriptProcessor fallback, ' + ctx.sampleRate + ' Hz';
+    document.getElementById('engineOut').textContent = 'ScriptProcessor fallback, ' + ctx.sampleRate + ' Hz (worklet: ' + (err && err.name || 'error') + ')';
+    console.warn('[audio] AudioWorklet unavailable, using ScriptProcessor:', err);
   }
   chip.textContent = 'Audio on'; chip.className = 'chip on';
   document.getElementById('startBtn').textContent = 'Sound on';
@@ -371,7 +376,7 @@ function onRecBlock(e) {
   if (!rec) return;
   const m = e.data;
   if (rec.t0 === null) rec.t0 = m.t;
-  rec.audio.push(m.a);
+  if (m.a) rec.audio.push(m.a);
   rec.rows.push([(m.t - rec.t0).toFixed(6), ...m.o.map((v) => v.toFixed(5)), m.b.toFixed(5)].join(','));
   const secs = Math.floor(m.t - rec.t0);
   if (secs !== rec.shown) { rec.shown = secs; document.getElementById('recBtn').textContent = 'Stop (' + secs + ' s)'; }
@@ -396,13 +401,12 @@ async function toggleRecord() {
   const btn = document.getElementById('recBtn');
   if (!rec) {
     if (!ctx) await start();
-    if (!node) { btn.textContent = 'Record needs AudioWorklet'; return; }
-    rec = { t0: null, audio: [], rows: [], shown: -1, sr: ctx.sampleRate, input: rawSeen ? 'raw' : 'stock' };
-    node.port.postMessage({ rec: true });
+    rec = { t0: null, audio: [], rows: [], shown: -1, sr: ctx.sampleRate, input: (rawSeen ? 'raw' : 'stock') + (node ? '' : '-sp') };
+    if (node) node.port.postMessage({ rec: true });
     btn.textContent = 'Stop (0 s)'; btn.classList.remove('ghost');
     return;
   }
-  node.port.postMessage({ rec: false });
+  if (node) node.port.postMessage({ rec: false });
   const r = rec; rec = null;
   btn.textContent = 'Record'; btn.classList.add('ghost');
   if (!r.audio.length) return;
