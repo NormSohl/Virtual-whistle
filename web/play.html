@@ -592,15 +592,18 @@ async function connectMidi() {
 }
 // Stream health, shown on the MIDI chip once a second: frames/s, frames lost (seq gaps),
 // malformed frames (wrong length), and the longest gap between frames (ms, host timestamps).
-const rawStats = { frames: 0, dropped: 0, bad: 0, lastSeq: -1, lastT: 0, maxGap: 0, totalFrames: 0, totalDropped: 0, totalBad: 0 };
+const rawStats = { frames: 0, dropped: 0, bad: 0, dup: 0, lastSeq: -1, lastT: 0, maxGap: 0, totalFrames: 0, totalDropped: 0, totalBad: 0, totalDup: 0 };
+// macOS can expose the same WARBL through more than one MIDI input; listen to raw frames
+// from the first input that sends one, and count repeats of the same seq as duplicates.
+let rawInputId = null;
 function showRawStats() {
   const s = rawStats;
-  s.totalFrames += s.frames; s.totalDropped += s.dropped; s.totalBad += s.bad;
+  s.totalFrames += s.frames; s.totalDropped += s.dropped; s.totalBad += s.bad; s.totalDup += s.dup;
   const chip = document.getElementById('midiChip');
-  chip.textContent = `WARBL: raw stream · ${s.frames}/s · lost ${s.dropped} · bad ${s.bad} · max gap ${s.maxGap.toFixed(1)} ms`;
-  chip.title = `Totals: ${s.totalFrames} frames, ${s.totalDropped} lost, ${s.totalBad} bad`;
+  chip.textContent = `WARBL: raw stream · ${s.frames}/s · lost ${s.dropped} · bad ${s.bad} · dup ${s.dup} · max gap ${s.maxGap.toFixed(1)} ms`;
+  chip.title = `Totals: ${s.totalFrames} frames, ${s.totalDropped} lost, ${s.totalBad} bad, ${s.totalDup} duplicate${rawInputId ? ', input ' + rawInputId : ''}`;
   console.log('[raw]', chip.textContent, '|', chip.title);
-  s.frames = 0; s.dropped = 0; s.bad = 0; s.maxGap = 0;
+  s.frames = 0; s.dropped = 0; s.bad = 0; s.dup = 0; s.maxGap = 0;
 }
 function onRawFrame(d, t) {
   // d: full SysEx including F0 ... F7; t: event timestamp (ms)
@@ -612,6 +615,7 @@ function onRawFrame(d, t) {
   }
   if (d[4] === 0x01 && d.length !== 27) { rawStats.bad++; return; }   // truncated or merged frame
   if (d[4] !== 0x01) return;                          // F0 7D W R 01 seq h0..h8 p F7
+  if (d[5] === rawStats.lastSeq) { rawStats.dup++; return; }
   rawStats.frames++;
   if (rawStats.lastSeq >= 0) rawStats.dropped += (d[5] - rawStats.lastSeq - 1 + 128) % 128;
   rawStats.lastSeq = d[5];
@@ -636,7 +640,11 @@ function onRawFrame(d, t) {
 }
 function onMidi(ev) {
   const d = ev.data;
-  if (d[0] === 0xF0) { if (d[1] === 0x7D && d[2] === 0x57 && d[3] === 0x52) onRawFrame(d, ev.timeStamp); return; }
+  if (d[0] === 0xF0) { if (d[1] === 0x7D && d[2] === 0x57 && d[3] === 0x52) {
+    const id = ev.target && ev.target.id;
+    if (rawInputId === null) rawInputId = id;
+    if (id === rawInputId) onRawFrame(d, ev.timeStamp);
+  } return; }
   if (rawSeen) return;
   const [st, d1, d2] = d;
   if ((st & 0xF0) !== 0xB0 || (st & 0x0F) !== 6) return;   // CCs on channel 7
