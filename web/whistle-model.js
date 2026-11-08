@@ -280,19 +280,19 @@ function vwGenerationD() {
 }
 
 // Presets. generationD: as calibrated 2026-11-01 (VW_DEFAULT_SETTINGS). generationDWall: wall losses with the
-// jet and tuning refitted (tune/fit_wall.py, 2026-11-07) against the same scale test plus Norm's breath
-// sweeps, release rate and note balance; see docs/results/2026-11-07-wall-loss-refit.md. rawGain: output
-// scaling that matches its loudness to Generation D's (its raw output is ~44 dB lower).
+// jet and tuning refitted (tune/fit_wall.py run 6, 2026-11-07) against the same scale test plus Norm's breath
+// sweeps, release rate, note balance and tongued starts; see docs/results/2026-11-07-wall-loss-refit.md.
+// rawGain: output scaling that matches its loudness to Generation D's (raw output ~38 dB lower).
 const VW_PRESETS = {
   generationD: { settings: {}, rawGain: 1 },
   generationDWall: { settings: {
-    dispersion: 0.993788,
-    jetRatio: 0.873587,
-    jetGain: -5.08555,
-    jetOffset: 0.596606,
-    jetStrouhal: 0.11518,
-    wallLoss: 0.804658
-  }, rawGain: 163 },
+    dispersion: 0.996712,
+    jetRatio: 0.838098,
+    jetGain: -12.5645,
+    jetOffset: 0.209474,
+    jetStrouhal: 0.07977,
+    wallLoss: 0.833295
+  }, rawGain: 83 },
 };
 
 // Build a whistle for a page mode: 'off' Generation D, 'release' Generation D with wall losses only in

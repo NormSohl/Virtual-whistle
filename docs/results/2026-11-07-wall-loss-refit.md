@@ -1,4 +1,4 @@
-# Refitting the jet for a bore with wall losses (2026-11-07): not playable yet
+# Refitting the jet for a bore with wall losses (2026-11-07)
 
 Norm liked "release only" but asked for a fair comparison: refit the model with wall losses, without losing Generation D. Generation D's settings are untouched; the fit is a separate preset (`VW_PRESETS.generationDWall` in `web/whistle-model.js`, `tune/presets/`).
 
@@ -30,7 +30,15 @@ On the score it beats Generation D, but it plays badly outside the scale test. T
 
 The fit found the small breath-driven pitch rise by turning the jet gain down to its limit, where the oscillation is barely above threshold: notes start only for the exact attacks and breaths in the test. In this jet model, a strong oscillation and a small pitch rise with breath pull against each other once the bore has realistic losses (real whistle: both).
 
-## Next
-1. Add playability to the score: tongued starts from silence across each note's breath range must speak in the right register at a sensible level.
-2. If that cannot be met, the jet model needs work (how the jet's phase follows breath, its saturation) rather than more fitting.
-Meanwhile the page offers Off and Release only.
+## Step 1: playability in the score (runs 5-6)
+Tongued starts from silence for D, E, G, A, B, C#, E', G' at 0.75, 1.0, 1.4 x the scale breath (must speak in the right register, within 35 dB of the loudest start) and at 1.8, 2.4 x (must sound, any register). 15 points per failure. Generation D: 0/40 failures, cost 39.4. Run 4: 8/24 (old test). Run 5 (3 strengths only): 0/24, but 7/40 on the full test (low D and E silent between registers at 0.18-0.27).
+
+| | Starts failing | Scale rms (cents) | D / G breath rise (cents) | Release D/G/B (dB/s) | Balance rms (dB) | Cost |
+|---|---|---|---|---|---|---|
+| Generation D | 0/40 | 10.3 | 12 / 34 | 26 / 54 / 116 | 8.0 | 39.4 |
+| run 6 | 0/40 | 10.0 | 51 / 84 | 228 / 344 / 487 | 12.3 | 78.0 |
+| real whistle | | | ~10 / ~18 | ~290 | | |
+
+Run 6 (`tune/presets/generation_d_wall_fit_run6.json`, now `VW_PRESETS.generationDWall`): dispersion 0.9967, jetRatio 0.838, jetGain -12.6, jetOffset 0.209, jetStrouhal 0.080, wallLoss 0.833; output +38 dB to match Generation D's loudness. Plays everywhere tested; the cost is pitch bending up with breath 2.5-4x as much as Generation D. Page engine check: low D started at 0.2 stays in the first register at -48 dBFS (Generation D jumps to the octave at -20 dBFS).
+
+Conclusion: with this jet, realistic wall losses buy the real whistle's release and cost breath-steady pitch; both together need the jet model itself changed (step 2). On the page as "Wall losses (retuned)" for listening next to "Release only".

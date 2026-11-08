@@ -87,6 +87,40 @@ def sweep(settings: dict, pattern: str, tmp: Path, name: str) -> list[tuple[floa
     return out
 
 
+ONSET_NOTES = [("D", "xxxxxx", 1), ("E", "xxxxxo", 1), ("G", "xxxooo", 1), ("A", "xxoooo", 1), ("B", "xooooo", 1),
+               ("C#", "oooooo", 1), ("E'", "xxxxxo", 2), ("G'", "xxxooo", 2)]
+ONSET_SCALE = (0.75, 1.0, 1.4, 1.8, 2.4)   # above 1.4x the note may be in either register, but must sound
+
+
+def onsets(settings: dict, tmp: Path) -> list[dict]:
+    """Tongued starts from silence at soft / scale / strong breath for each note: does it speak, in the right
+    register, and how loud (dB re the loudest start in this test)?"""
+    ref = references()
+    out = []
+    for label, pattern, reg in ONSET_NOTES:
+        target = ref[(pattern, reg)]
+        base = synth.BREATH[label]
+        o = synth.openness(pattern)
+        for k in ONSET_SCALE:
+            b = base * k
+            rows = [[0.0] + o + [0.0], [0.008] + o + [b], [0.6] + o + [b], [0.63] + o + [0.0], [0.7] + o + [0.0]]
+            x = render(settings, rows, tmp, "onset")
+            seg = x[int(0.3 * SR):int(0.58 * SR)]
+            lv = 20 * np.log10(np.sqrt(np.mean(seg ** 2)) + 1e-12)
+            tr = pitch.pitch_track(seg, SR, fmin=300, fmax=5000)
+            hz = float(np.nanmedian(tr.freqs)) if np.isfinite(tr.freqs).any() else float("nan")
+            cents = 1200 * np.log2(hz / target) if np.isfinite(hz) else float("nan")
+            out.append(dict(label=label, k=k, breath=b, level=lv, hz=hz, cents=cents))
+    top = max(r["level"] for r in out)
+    for r in out:
+        r["rel"] = r["level"] - top
+        c = r["cents"]
+        if r["k"] > 1.45 and np.isfinite(c):   # strong breath: any register (x1, x1.5, x2, x3 of the target) as long as it sounds
+            c = min(abs(c - 1200 * np.log2(m)) for m in (1, 1.5, 2, 3))
+        r["ok"] = bool(np.isfinite(c) and abs(c) < 100 and r["rel"] > -35)
+    return out
+
+
 def sweep_summary(sw, f1: float) -> dict:
     """First-register span (cents, from where it speaks to just before the octave) and break breath."""
     loud = max(l for _, _, l in sw)
@@ -106,6 +140,7 @@ def evaluate(settings: dict, verbose: bool = False) -> tuple[float, dict]:
         ref = references()
         swD = sweep_summary(sweep(settings, "xxxxxx", tmp, "swD"), ref[("xxxxxx", 1)])
         swG = sweep_summary(sweep(settings, "xxxooo", tmp, "swG"), ref[("xxxooo", 1)])
+        ons = onsets(settings, tmp)
     cents = np.array([r["cents"] for r in sc])
     wrong = int(np.sum(~np.isfinite(cents) | (np.abs(cents) > 300)))
     ok = cents[np.isfinite(cents) & (np.abs(cents) <= 300)]
@@ -119,12 +154,14 @@ def evaluate(settings: dict, verbose: bool = False) -> tuple[float, dict]:
         if not np.isfinite(sw["brk"]) or sw["brk"] < need:
             cost += 400 * max(0.0, need - (sw["brk"] if np.isfinite(sw["brk"]) else 0.0))
     cost += 0.05 * float(np.mean(np.abs(np.log2(np.maximum(rel, 1) / 290)) * 100))   # ~cents-like scale
+    fails = [r for r in ons if not r["ok"]]
+    cost += 15.0 * len(fails)
     rl = lv - lv.max()
     level_err = float(np.sqrt(np.mean((rl - np.array(REAL_LEVEL)) ** 2)))
     cost += 1.0 * level_err
     rep = dict(scale=sc, wrong=wrong, rms_cents=float(np.sqrt(np.mean(ok ** 2))) if len(ok) else float("nan"),
                mean_cents=float(np.mean(ok)) if len(ok) else float("nan"), max_cents=float(np.max(np.abs(ok))) if len(ok) else float("nan"),
-               swD=swD, swG=swG, release=rel.tolist(), level_spread=float(lv.max() - lv.min()), level_err=level_err, cost=cost)
+               swD=swD, swG=swG, release=rel.tolist(), level_spread=float(lv.max() - lv.min()), level_err=level_err, onsets=ons, onset_fails=len(fails), cost=cost)
     if verbose:
         print(f"{'note':5} {'model Hz':>9} {'takes Hz':>9} {'cents':>7} {'level dB':>9} {'release dB/s':>13}")
         for r in sc:
@@ -133,6 +170,9 @@ def evaluate(settings: dict, verbose: bool = False) -> tuple[float, dict]:
         print(f"breath sweep D: speaks at {swD['start']:.2f}, first register spans {swD['span']:.0f} cents, octave at {swD['brk']:.2f}   (real ~10 cents)")
         print(f"breath sweep G: speaks at {swG['start']:.2f}, first register spans {swG['span']:.0f} cents, octave at {swG['brk']:.2f}   (real ~18 cents)")
         print(f"release D/G/B: {', '.join(f'{v:.0f}' for v in rel)} dB/s   (real ~290)")
+        print(f"tongued starts that fail (silent, wrong register, or >35 dB below the loudest): {len(fails)}/{len(ons)}")
+        for r in ons:
+            print(f"   {r['label']:3} x{r['k']:.2f} breath {r['breath']:.3f}: " + (f"{r['hz']:7.1f} Hz {r['cents']:+6.0f} c {r['rel']:6.1f} dB" if np.isfinite(r['hz']) else f"silent {r['rel']:6.1f} dB") + ("" if r['ok'] else "   FAIL"))
         print(f"cost {cost:.1f}")
     return cost, rep
 
