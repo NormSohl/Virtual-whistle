@@ -2,6 +2,8 @@
 
 A physical model of a penny whistle, played from a WARBL, tuned against measurements of a real instrument. First step toward a virtual Renaissance recorder.
 
+**Read the preview, with a video of it being played:** [A virtual penny whistle, played from a WARBL](https://www.sohl.com/2026/11/07/virtual-whistle-preview/) (sohl.com, 2026-11-07).
+
 - Project context and rules: [CLAUDE.md](CLAUDE.md)
 - How to measure a real whistle: [docs/measuring.md](docs/measuring.md)
 - Design decisions: [docs/decisions.md](docs/decisions.md)
