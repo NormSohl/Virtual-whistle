@@ -279,4 +279,29 @@ function vwGenerationD() {
   };
 }
 
-if (typeof module !== 'undefined') module.exports = { VwWhistle, vwGenerationD, VW_DEFAULT_SETTINGS, VW_MAX_HOLES, VW_HOLE_LEAK, vwFitWallLoss };
+// Presets. generationD: as calibrated 2026-11-01 (VW_DEFAULT_SETTINGS). generationDWall: wall losses with the
+// jet and tuning refitted (tune/fit_wall.py, 2026-11-07) against the same scale test plus Norm's breath
+// sweeps, release rate and note balance; see docs/results/2026-11-07-wall-loss-refit.md. rawGain: output
+// scaling that matches its loudness to Generation D's (its raw output is ~44 dB lower).
+const VW_PRESETS = {
+  generationD: { settings: {}, rawGain: 1 },
+  generationDWall: { settings: {
+    dispersion: 0.993788,
+    jetRatio: 0.873587,
+    jetGain: -5.08555,
+    jetOffset: 0.596606,
+    jetStrouhal: 0.11518,
+    wallLoss: 0.804658
+  }, rawGain: 163 },
+};
+
+// Build a whistle for a page mode: 'off' Generation D, 'release' Generation D with wall losses only in
+// note tails, 'retuned' the generationDWall preset.
+function vwMakeVariant(mode, sampleRate) {
+  const p = mode === 'retuned' ? VW_PRESETS.generationDWall : VW_PRESETS.generationD;
+  const w = new VwWhistle(vwGenerationD(), Object.assign({ sampleRate }, p.settings));
+  if (mode === 'release') w.setWallLoss(1, true);
+  return { w, rawGain: p.rawGain };
+}
+
+if (typeof module !== 'undefined') module.exports = { VwWhistle, vwGenerationD, VW_DEFAULT_SETTINGS, VW_MAX_HOLES, VW_HOLE_LEAK, vwFitWallLoss, VW_PRESETS, vwMakeVariant };

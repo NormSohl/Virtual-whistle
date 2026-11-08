@@ -136,7 +136,6 @@ button.key:focus-visible, .btn:focus-visible { outline: 3px solid var(--covered)
           <select id="wallSel">
             <option value="off">Off (Generation D)</option>
             <option value="release">Release only</option>
-            <option value="full">Full (jet not retuned)</option>
           </select></label>
       </div>
       <dl class="readout">
@@ -443,7 +442,32 @@ function vwGenerationD() {
   };
 }
 
-if (typeof module !== 'undefined') module.exports = { VwWhistle, vwGenerationD, VW_DEFAULT_SETTINGS, VW_MAX_HOLES, VW_HOLE_LEAK, vwFitWallLoss };
+// Presets. generationD: as calibrated 2026-11-01 (VW_DEFAULT_SETTINGS). generationDWall: wall losses with the
+// jet and tuning refitted (tune/fit_wall.py, 2026-11-07) against the same scale test plus Norm's breath
+// sweeps, release rate and note balance; see docs/results/2026-11-07-wall-loss-refit.md. rawGain: output
+// scaling that matches its loudness to Generation D's (its raw output is ~44 dB lower).
+const VW_PRESETS = {
+  generationD: { settings: {}, rawGain: 1 },
+  generationDWall: { settings: {
+    dispersion: 0.993788,
+    jetRatio: 0.873587,
+    jetGain: -5.08555,
+    jetOffset: 0.596606,
+    jetStrouhal: 0.11518,
+    wallLoss: 0.804658
+  }, rawGain: 163 },
+};
+
+// Build a whistle for a page mode: 'off' Generation D, 'release' Generation D with wall losses only in
+// note tails, 'retuned' the generationDWall preset.
+function vwMakeVariant(mode, sampleRate) {
+  const p = mode === 'retuned' ? VW_PRESETS.generationDWall : VW_PRESETS.generationD;
+  const w = new VwWhistle(vwGenerationD(), Object.assign({ sampleRate }, p.settings));
+  if (mode === 'release') w.setWallLoss(1, true);
+  return { w, rawGain: p.rawGain };
+}
+
+if (typeof module !== 'undefined') module.exports = { VwWhistle, vwGenerationD, VW_DEFAULT_SETTINGS, VW_MAX_HOLES, VW_HOLE_LEAK, vwFitWallLoss, VW_PRESETS, vwMakeVariant };
 
 
 // ---------------------------------------------------------------- data
@@ -577,7 +601,11 @@ class WhistleProc extends AudioWorkletProcessor {
     this.rec = false;
     this.port.onmessage = (e) => {
       if ('rec' in e.data) { this.rec = e.data.rec; return; }
-      if ('wall' in e.data) { applyWall(this.w, e.data.wall); this.gain = 0.0006; return; }
+      if ('wall' in e.data) {
+        const v = vwMakeVariant(e.data.wall, sampleRate * this.factor);
+        for (let i = 0; i < 6; i++) v.w.setOpenness(i, this.cHoles[i], true);
+        this.w = v.w; this.gain = 0.0006 * v.rawGain; return;
+      }
       this.tHoles = e.data.holes; this.tBreath = e.data.breath;
     };
   }
@@ -612,12 +640,6 @@ class WhistleProc extends AudioWorkletProcessor {
   }
 }
 registerProcessor('whistle', WhistleProc);
-function applyWall(w, mode) {
-  // Experiment (2026-11-07): physical wall losses, only in note tails ('release') or always ('full',
-  // jet gain raised to restore level; pitch pulls sharp with breath until the jet is retuned).
-  w.s.jetGain = mode === 'full' ? -300 : VW_DEFAULT_SETTINGS.jetGain;
-  w.setWallLoss(mode === 'off' ? 0 : 1, mode === 'release');
-}
 `;
 
 function message() { return { holes: holes.map((h) => 1 - h), breath }; }   // model wants openness
@@ -640,12 +662,14 @@ async function start() {
     const factor = Math.max(1, Math.round(96000 / ctx.sampleRate));
     const w = new VwWhistle(vwGenerationD(), { sampleRate: ctx.sampleRate * factor });
     sp = ctx.createScriptProcessor(512, 0, 2);
-    sp.whistle = w;
+    sp.whistle = w; sp.factor = factor; sp.gain = 0.0006;
     sp.target = message();
     const cur = { holes: [0, 0, 0, 0, 0, 0], breath: 0 };
+    sp.cur = cur;
     let spFrame = 0;
     sp.onaudioprocess = (ev) => {
       const L = ev.outputBuffer.getChannelData(0), R = ev.outputBuffer.getChannelData(1);
+      const w = sp.whistle, gain = sp.gain;   // the selector can swap the whistle between buffers
       for (let b = 0; b < L.length; b += 32) {
         if (rec) onRecBlock({ data: { t: (spFrame + b) / ctx.sampleRate, o: cur.holes.slice(), b: cur.breath, a: null } });
         const f = 1 / (0.015 * ctx.sampleRate * factor), d0 = sp.target.breath - cur.breath, s = 32 / (0.008 * ctx.sampleRate) * Math.max(0.3, d0 > 0 ? sp.target.breath : cur.breath);
@@ -656,7 +680,7 @@ async function start() {
             for (let i = 0; i < 6; i++) { const dh = sp.target.holes[i] - cur.holes[i]; if (dh !== 0) { cur.holes[i] += Math.abs(dh) <= f ? dh : Math.sign(dh) * f; w.setOpenness(i, cur.holes[i]); } }
             a += w.process();
           }
-          const y = Math.tanh(0.0006 * a / factor); L[k] = y; R[k] = y;
+          const y = Math.tanh(gain * a / factor); L[k] = y; R[k] = y;
         }
       }
       if (rec) rec.audio.push(L.slice());
@@ -727,11 +751,11 @@ document.getElementById('recBtn').addEventListener('click', toggleRecord);
 let wallMode = 'off';
 function sendWall() {
   if (node) node.port.postMessage({ wall: wallMode });
-  if (sp && sp.whistle) applyWallMain(sp.whistle, wallMode);
-}
-function applyWallMain(w, mode) {
-  w.s.jetGain = mode === 'full' ? -300 : VW_DEFAULT_SETTINGS.jetGain;
-  w.setWallLoss(mode === 'off' ? 0 : 1, mode === 'release');
+  if (sp && sp.whistle) {
+    const v = vwMakeVariant(wallMode, ctx.sampleRate * sp.factor);
+    for (let i = 0; i < 6; i++) v.w.setOpenness(i, sp.cur.holes[i], true);
+    sp.whistle = v.w; sp.gain = 0.0006 * v.rawGain;
+  }
 }
 document.getElementById('wallSel').addEventListener('change', (e) => { wallMode = e.target.value; sendWall(); });
 
@@ -1131,5 +1155,30 @@ function vwGenerationD() {
   };
 }
 
-if (typeof module !== 'undefined') module.exports = { VwWhistle, vwGenerationD, VW_DEFAULT_SETTINGS, VW_MAX_HOLES, VW_HOLE_LEAK, vwFitWallLoss };
+// Presets. generationD: as calibrated 2026-11-01 (VW_DEFAULT_SETTINGS). generationDWall: wall losses with the
+// jet and tuning refitted (tune/fit_wall.py, 2026-11-07) against the same scale test plus Norm's breath
+// sweeps, release rate and note balance; see docs/results/2026-11-07-wall-loss-refit.md. rawGain: output
+// scaling that matches its loudness to Generation D's (its raw output is ~44 dB lower).
+const VW_PRESETS = {
+  generationD: { settings: {}, rawGain: 1 },
+  generationDWall: { settings: {
+    dispersion: 0.993788,
+    jetRatio: 0.873587,
+    jetGain: -5.08555,
+    jetOffset: 0.596606,
+    jetStrouhal: 0.11518,
+    wallLoss: 0.804658
+  }, rawGain: 163 },
+};
+
+// Build a whistle for a page mode: 'off' Generation D, 'release' Generation D with wall losses only in
+// note tails, 'retuned' the generationDWall preset.
+function vwMakeVariant(mode, sampleRate) {
+  const p = mode === 'retuned' ? VW_PRESETS.generationDWall : VW_PRESETS.generationD;
+  const w = new VwWhistle(vwGenerationD(), Object.assign({ sampleRate }, p.settings));
+  if (mode === 'release') w.setWallLoss(1, true);
+  return { w, rawGain: p.rawGain };
+}
+
+if (typeof module !== 'undefined') module.exports = { VwWhistle, vwGenerationD, VW_DEFAULT_SETTINGS, VW_MAX_HOLES, VW_HOLE_LEAK, vwFitWallLoss, VW_PRESETS, vwMakeVariant };
 </script>
