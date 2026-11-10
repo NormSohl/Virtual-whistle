@@ -16,6 +16,8 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <initializer_list>
+#include <utility>
 
 namespace vw {
 
@@ -118,6 +120,88 @@ private:
     float x1_ = 0, y1_ = 0;
 };
 
+// First-order filter with unity gain at DC, for distributed wall losses:
+//   y = k (x + b x1) - a y1
+struct OnePole {
+    float k = 1, b = 0, a = 0, x1 = 0, y1 = 0;
+    float process(float x) {
+        const float y = k * (x + b * x1) - a * y1;
+        x1 = x;
+        y1 = y;
+        return y;
+    }
+    void reset() { x1 = y1 = 0.f; }
+};
+
+// Fit k (1 + b z^-1) / (1 + a z^-1), k = (1 + a) / (1 + b), to the wall-loss magnitude
+// exp(-alpha(f) len), alpha = scale * 3e-5 sqrt(f) / radius (Np/m; Fletcher & Rossing): least squares
+// on log magnitude, 100 Hz - 8 kHz. Same Nelder-Mead as vwFitWallLoss in web/whistle-model.js, so both
+// engines get the same filters. Runs at init or when the loss setting changes, never per sample.
+inline void fitWallLoss(double len, double radius, double scale, double fs, OnePole& out) {
+    constexpr int kMaxF = 40;
+    double fr[kMaxF], target[kMaxF];
+    int nf = 0;
+    for (double f = 100; f <= 8000 && nf < kMaxF; f *= 1.15) {
+        fr[nf] = f;
+        target[nf] = -scale * 3e-5 * std::sqrt(f) / radius * len;
+        ++nf;
+    }
+    auto err = [&](double a, double b) {
+        if (std::fabs(a) >= 0.999 || std::fabs(b) >= 0.999) return 1e9;
+        const double k = (1 + a) / (1 + b);
+        double e = 0;
+        for (int i = 0; i < nf; ++i) {
+            const double w = 2 * 3.141592653589793 * fr[i] / fs, c = std::cos(w);
+            const double m2 = k * k * (1 + b * b + 2 * b * c) / (1 + a * a + 2 * a * c);
+            const double d = 0.5 * std::log(m2) - target[i];
+            e += d * d;
+        }
+        return e;
+    };
+    struct Pt {
+        double a, b, e;
+    };
+    Pt p[3] = {{-0.5, -0.49, 0}, {-0.6, -0.59, 0}, {-0.5, -0.48, 0}};
+    for (auto& q : p) q.e = err(q.a, q.b);
+    auto sort3 = [&]() {  // stable, ascending error
+        if (p[1].e < p[0].e) std::swap(p[0], p[1]);
+        if (p[2].e < p[1].e) std::swap(p[1], p[2]);
+        if (p[1].e < p[0].e) std::swap(p[0], p[1]);
+    };
+    for (int it = 0; it < 600; ++it) {
+        sort3();
+        const Pt best = p[0], mid = p[1], worst = p[2];
+        const double ca = (best.a + mid.a) / 2, cb = (best.b + mid.b) / 2;
+        auto at = [&](double t) {
+            Pt q{ca + t * (worst.a - ca), cb + t * (worst.b - cb), 0};
+            q.e = err(q.a, q.b);
+            return q;
+        };
+        const Pt r = at(-1);
+        if (r.e < best.e) {
+            const Pt e2 = at(-2);
+            p[2] = e2.e < r.e ? e2 : r;
+        } else if (r.e < mid.e) {
+            p[2] = r;
+        } else {
+            const Pt cc = at(0.5);
+            if (cc.e < worst.e) {
+                p[2] = cc;
+            } else {
+                for (int i = 1; i < 3; ++i) {
+                    p[i].a = (p[i].a + best.a) / 2;
+                    p[i].b = (p[i].b + best.b) / 2;
+                    p[i].e = err(p[i].a, p[i].b);
+                }
+            }
+        }
+    }
+    sort3();
+    out.a = float(p[0].a);
+    out.b = float(p[0].b);
+    out.k = float((1 + p[0].a) / (1 + p[0].b));
+}
+
 // ------------------------------------------------------------- geometry
 
 // Up to nine holes: the WARBL has nine sensors (thumb, L1-L3, R1-R4, bell).
@@ -161,15 +245,25 @@ struct Settings {
     int jetLpOrder = 2;          // 1 or 2 poles
     float maxPressurePa = 1500.f; // breath 1.0 corresponds to this mouth pressure
     float jetDelayRise = 0.003f;  // max lengthening of the jet delay, samples per sample (at 96 kHz)
+    float wallLoss = 0.f;         // frequency-dependent viscothermal wall losses: 0 off, 1 physical strength
+    bool wallReleaseOnly = false; // experiment: wall losses only while breath is ~0 (note tails)
 };
 
 // ------------------------------------------------------------- model
 
 class Whistle {
 public:
-    static constexpr int kDelayN = 4096;
+    // Bore segments need far less delay than the jet: 1024 samples is 3.6 m of bore at 96 kHz
+    // (1.8 m at 192 kHz), and keeps the whole model near 100 KB instead of 344 KB.
+    static constexpr int kSegN = 1024;
+    static constexpr int kJetN = 4096;
 
-    void init(const Geometry& g, const Settings& s) {
+    // Returns false (and stays silent) if the geometry can't be modelled: holes must be in bore order
+    // strictly inside the bore, and every segment between neighbours must be 2 .. kSegN - 3 samples of
+    // travel (about 7 mm at 96 kHz, 14 mm at 48 kHz). Closer holes used to be clamped without warning,
+    // which mistunes the instrument.
+    bool init(const Geometry& g, const Settings& s) {
+        valid_ = false;
         g_ = g;
         s_ = s;
         c_ = 331.3f * std::sqrt((s.tempC + 273.15f) / 273.15f) * s.dispersion;
@@ -185,9 +279,13 @@ public:
         // evaluated at lossRefHz and applied as a broadband gain on each pass.
         const float alpha = s.lossRefHz > 0.f ? 3.0e-5f * std::sqrt(s.lossRefHz) / g.boreRadius : 0.f;
         for (int k = 0; k < nh_ + 1; ++k) {
+            segLen_[k] = x[k + 1] - x[k];
             segDelay_[k] = (x[k + 1] - x[k]) / c_ * s.sampleRate;
             segGain_[k] = std::exp(-alpha * (x[k + 1] - x[k]));
         }
+        bool ok = g.boreRadius > 0.f && g.length > 0.f && s.sampleRate > 0.f;
+        for (int k = 0; k < nh_ + 1; ++k)
+            if (!(segDelay_[k] >= 2.f && segDelay_[k] <= float(kSegN - 3))) ok = false;
 
         for (auto& d : right_) d.clear();
         for (auto& d : left_) d.clear();
@@ -195,6 +293,16 @@ public:
         for (auto& h : holeFilt_) h.reset();
         windowFilt_.reset();
         footFilt_.reset();
+        for (auto& f : wallR_) f.reset();
+        for (auto& f : wallL_) f.reset();
+        dc_ = DcBlock();
+        vWinDc_ = DcBlock();
+        topLeak_ = Leak();
+        lastWin_ = 0.f;
+        breath_ = 0.f;
+        wallMix_ = 0.f;
+        if (!ok) return false;
+        setWallLoss(s.wallLoss, s.wallReleaseOnly);
 
         designWindow();
         designFoot();
@@ -206,6 +314,26 @@ public:
         jetLp2_ = 0.f;
         jdSmooth_ = 2000.f;
         jetLpCoef_ = 1.f - std::exp(-2.f * kPi * s.jetCutoffHz / s.sampleRate);
+        valid_ = true;
+        return true;
+    }
+
+    bool valid() const { return valid_; }
+
+    // Wall-loss strength: 0 off, 1 physical. Refits the per-segment filters (not for the audio thread).
+    void setWallLoss(float scale, bool releaseOnly) {
+        s_.wallLoss = scale > 0.f ? scale : 0.f;
+        s_.wallReleaseOnly = releaseOnly;
+        if (s_.wallLoss <= 0.f) return;
+        for (int k = 0; k < nh_ + 1; ++k) {
+            OnePole f;
+            fitWallLoss(segLen_[k], g_.boreRadius, s_.wallLoss, s_.sampleRate, f);
+            for (OnePole* flt : {&wallR_[k], &wallL_[k]}) {
+                flt->k = f.k;
+                flt->a = f.a;
+                flt->b = f.b;
+            }
+        }
     }
 
     // 0 = closed by a finger, 1 = fully open. Cheap enough to call every block.
@@ -223,6 +351,7 @@ public:
     void setBreath(float b) { breath_ = b < 0.f ? 0.f : b; }
 
     float process() {
+        if (!valid_) return 0.f;
         const float fs = s_.sampleRate;
 
         // Read every wave arriving at a boundary this sample.
@@ -230,6 +359,22 @@ public:
         for (int k = 0; k < nh_ + 1; ++k) {
             rOut[k] = segGain_[k] * right_[k].read(segDelay_[k]);
             lOut[k] = segGain_[k] * left_[k].read(segDelay_[k]);
+        }
+        if (s_.wallLoss > 0.f) {
+            // Release-only mode crossfades the losses in over ~10 ms once breath is ~0, and out as soon
+            // as it returns.
+            float m = 1.f;
+            if (s_.wallReleaseOnly) {
+                const float target = breath_ < 0.01f ? 1.f : 0.f, step = 1.f / (0.01f * fs);
+                const float d = target - wallMix_;
+                wallMix_ += d > step ? step : (d < -step ? -step : d);
+                m = wallMix_;
+            }
+            for (int k = 0; k < nh_ + 1; ++k) {
+                const float r = wallR_[k].process(rOut[k]), l = wallL_[k].process(lOut[k]);
+                rOut[k] += m * (r - rOut[k]);
+                lOut[k] += m * (l - lOut[k]);
+            }
         }
 
         // Window end: wave returning from the bore, reflected through the
@@ -423,13 +568,17 @@ private:
     Settings s_;
     float c_ = 343.f, rho_ = 1.2f;
     int nh_ = 0;
-    std::array<DelayLine<kDelayN>, kMaxHoles + 1> right_{}, left_{};
+    std::array<DelayLine<kSegN>, kMaxHoles + 1> right_{}, left_{};
     std::array<float, kMaxHoles + 1> segDelay_{};
     std::array<float, kMaxHoles + 1> segGain_{};
+    std::array<float, kMaxHoles + 1> segLen_{};
+    std::array<OnePole, kMaxHoles + 1> wallR_{}, wallL_{};
+    float wallMix_ = 0.f;
+    bool valid_ = false;
     std::array<Biquad, kMaxHoles> holeFilt_{};
     std::array<float, kMaxHoles> open_{};
     Biquad windowFilt_, footFilt_;
-    DelayLine<kDelayN> jetDelay_;
+    DelayLine<kJetN> jetDelay_;
     DcBlock dc_;
     float breath_ = 0.f, lastWin_ = 0.f;
     float jetLp_ = 0.f, jetLpCoef_ = 0.f;

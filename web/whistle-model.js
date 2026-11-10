@@ -1,6 +1,7 @@
 // JavaScript port of dsp/whistle.hpp (physical flue jet, model 2, with radiation).
 // Kept line-for-line close to the C++ so the two can be checked against each
-// other (tests/test_js_port.py renders the same control script with both).
+// other (tests/test_nine_holes.py and tests/test_engine_parity.py render the
+// same control scripts with both).
 // Runs in Node (verification) and inside an AudioWorklet (web/play.html).
 
 class VwDelay {
@@ -90,6 +91,7 @@ const VW_DEFAULT_SETTINGS = {
   sampleRate: 96000, tempC: 30, dispersion: 0.991, footLoss: 1.0, radiation: true,
   jetRatio: 1.0, jetReflection: 1.0, jetGain: -100, noiseGain: 0.002, jetOffset: 0.1,
   jetStrouhal: 0.2, jetLpOrder: 2, maxPressurePa: 1500, jetDelayRise: 0.003,
+  jetCutoffHz: 8000,   // fixed jet lowpass, used when jetStrouhal is 0 (as in the C++)
   wallLoss: 0,   // viscothermal wall losses along the bore: 0 off (Generation D as calibrated), 1 physical strength
   wallReleaseOnly: false,   // experiment: apply wall losses only while breath is ~0 (note tails), not while playing
 };
@@ -110,6 +112,11 @@ class VwWhistle {
     this.rho = 1.2041 * 293.15 / (S.tempC + 273.15);
     this.nh = Math.min(VW_MAX_HOLES, g.holePos.length);
     const x = [0, ...g.holePos.slice(0, this.nh), g.length];
+    // Same check as the C++ init(): holes in bore order, inside the bore, each segment 2+ samples of travel.
+    for (let k = 0; k < this.nh + 1; k++) {
+      const d = (x[k + 1] - x[k]) / this.c * S.sampleRate;
+      if (!(d >= 2 && d <= 1021)) throw new Error(`VwWhistle: segment ${k} is ${d.toFixed(2)} samples of travel; holes must be in bore order and at least 2 samples (${(2000 * this.c / S.sampleRate).toFixed(1)} mm) apart`);
+    }
     this.segDelay = []; this.right = []; this.left = [];
     for (let k = 0; k < this.nh + 1; k++) {
       this.segDelay.push((x[k + 1] - x[k]) / this.c * S.sampleRate);
@@ -121,7 +128,8 @@ class VwWhistle {
     this.windowFilt = new VwBiquad(); this.footFilt = new VwBiquad();
     this.dc = new VwDc(); this.vWinDc = new VwDc();
     this.leakDc = 0;
-    this.breath = 0; this.lastWin = 0; this.jetLp = 0; this.jetLp2 = 0; this.jetLpCoef = 0;
+    this.breath = 0; this.lastWin = 0; this.jetLp = 0; this.jetLp2 = 0;
+    this.jetLpCoef = 1 - Math.exp(-2 * Math.PI * S.jetCutoffHz / S.sampleRate);
     this.lastTopOut = 0; this.lastSplit = 0; this.lastBreathForLp = -1; this.jdSmooth = 2000;
     this.noise = 22222 >>> 0;
     this.rOut = new Float64Array(this.nh + 1); this.lOut = new Float64Array(this.nh + 1);

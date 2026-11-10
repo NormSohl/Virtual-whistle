@@ -151,6 +151,8 @@ int main(int argc, char** argv) {
     s.jetDelayRise = float(get("jet_delay_rise", s.jetDelayRise));
     s.jetCutoffHz = float(get("jet_cutoff_hz", s.jetCutoffHz));
     s.maxPressurePa = float(get("max_pressure_pa", s.maxPressurePa));
+    s.wallLoss = float(get("wall_loss", s.wallLoss));
+    s.wallReleaseOnly = get("wall_release_only", 0) != 0;
 
     int nCols = 0;
     auto rows = readControl(argv[2], nCols);
@@ -164,7 +166,13 @@ int main(int argc, char** argv) {
     }
 
     static vw::Whistle w;  // large: keep off the stack
-    w.init(g, s);
+    if (!w.init(g, s)) {
+        std::fprintf(stderr,
+                     "geometry can't be modelled: holes must be in bore order, inside the bore, and at least "
+                     "2 samples of travel apart (%.1f mm at %g Hz)\n",
+                     2.0 * w.speedOfSound() / s.sampleRate * 1000.0, double(s.sampleRate));
+        return 2;
+    }
 
     const int sr = int(s.sampleRate);
     const double dur = rows.back().t;

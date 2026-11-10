@@ -174,9 +174,16 @@ def bore_input_impedance(omega: np.ndarray, bore: Bore, holes: list[Hole],
                          openness: list[float], air: Air) -> np.ndarray:
     """Input impedance at the top of the bore (window position)."""
     # Breakpoints: section starts and hole positions, in order from the top.
+    if len(holes) != len(openness):
+        raise ValueError(f"{len(holes)} holes but {len(openness)} openness values")
+    hole_at = {h.position: (h, s) for h, s in zip(holes, openness)}
+    if len(hole_at) != len(holes):
+        # Two holes at one position share a dictionary key and one would be dropped without a word.
+        raise ValueError("two holes at the same position: offset one slightly (e.g. a thumb hole opposite hole 1)")
+    if any(not 0.0 < h.position <= bore.length for h in holes):
+        raise ValueError("hole position outside the bore")
     events = sorted({0.0, bore.length, *[s for s, _ in bore.sections if 0 < s < bore.length],
                      *[h.position for h in holes]})
-    hole_at = {h.position: (h, s) for h, s in zip(holes, openness)}
     M = _identity(len(omega))
     for x0, x1 in zip(events[:-1], events[1:]):
         if x0 in hole_at and x0 > 0:

@@ -2,7 +2,7 @@
 scored by tune.evaluate (same scale test as Generation D, plus breath sweeps and release).
 Generation D's own settings are not touched; the result is written to tune/presets/.
 
-python -m tune.fit_wall [generations]
+python -m tune.fit_wall [generations] [starting preset name in tune/presets]
 """
 from __future__ import annotations
 import json, sys, time
@@ -35,19 +35,26 @@ def to_settings(u: np.ndarray) -> dict:
 
 
 def cost(u) -> float:
+    # A setting that makes the model blow up scores badly; a broken toolchain (no node, missing data)
+    # must not: main() runs one evaluation first so that kind of failure stops the fit instead of
+    # producing a "best" preset from a flat 1e4 landscape.
     try:
         return evaluate(to_settings(np.asarray(u)))[0]
-    except Exception:
+    except (FloatingPointError, ValueError, ZeroDivisionError):
         return 1e4
 
 
 def main() -> None:
     gens = int(sys.argv[1]) if len(sys.argv) > 1 else 30
     x0 = [(g - lo) / (hi - lo) for _, lo, hi, g in PARAMS]
-    start = Path(__file__).with_name("presets") / (sys.argv[2] + ".json")
-    if len(sys.argv) > 2 and start.exists():
+    if len(sys.argv) > 2:   # optional starting preset: python -m tune.fit_wall 30 generation_d_wall_fit_run6
+        start = Path(__file__).with_name("presets") / (sys.argv[2] + ".json")
+        if not start.exists():
+            sys.exit(f"no such preset: {start}")
         st = json.loads(start.read_text()); st["logJetGain"] = float(np.log(-st.pop("jetGain")))
         x0 = [(st[n] - lo) / (hi - lo) for n, lo, hi, _ in PARAMS]
+    c0 = evaluate(to_settings(np.asarray(x0)))[0]   # fails loudly if the renderer or data are missing
+    print(f"start cost {c0:.2f}", flush=True)
     es = cma.CMAEvolutionStrategy(x0, 0.15, {"bounds": [0, 1], "popsize": 8, "seed": 7, "verbose": -9})
     log = Path(__file__).with_name("fit_wall.log")
     t0 = time.time()

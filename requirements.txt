@@ -1,0 +1,11 @@
+# Python packages (pip install -r requirements.txt)
+numpy
+scipy
+soundfile
+pytest
+cma        # only for tune/fit_wall.py
+
+# Also needed, not from pip:
+#   g++ (C++17)   builds render/render.cpp
+#   node          runs web/render-node.js (JS engine checks, tune/)
+#   ffmpeg        reads .m4a recordings in analysis/pitch.py
