@@ -1,6 +1,6 @@
 # WARBL2 raw stream (firmware fork)
 
-Branch **`warbl2-raw-stream`** of this repo (private): the full amowry/WARBL2 history with two raw-stream commits on top of upstream main (4.8.0, commit 9ae59a2). It shares no history with `main`; check it out separately. Patches in `firmware/patches/`, test build `firmware/WARBL2_firmware_4.8.0_rawstream1.uf2` (arduino-cli 1.5.2, Adafruit nRF52 core 1.7.0, board WARBL2, BMP5xx library patched to 8 MHz SPI per the WARBL2 build notes). Compiles: 245,540 bytes flash (30 %), 28,088 bytes RAM (11 %). **Runs on hardware** (first test 2026-11-07, see below).
+Branch **`warbl2-raw-stream`** of this repo (public since 2026-11-07): the full amowry/WARBL2 history with two raw-stream commits on top of upstream main (4.8.0, commit 9ae59a2). It shares no history with `main`; check it out separately. Patches in `firmware/patches/`, test build `firmware/WARBL2_firmware_4.8.0_rawstream1.uf2` (arduino-cli 1.5.2, Adafruit nRF52 core 1.7.0, board WARBL2, BMP5xx library patched to 8 MHz SPI per the WARBL2 build notes). Compiles: 245,540 bytes flash (30 %), 28,088 bytes RAM (11 %). **Runs on hardware** (first test 2026-11-07, see below).
 
 ## Why
 Stock firmware reports holes as covered/uncovered after an adaptive smoothing filter, and to the Config Tool only every 25+ ms. A physical model needs how much of each hole is covered, continuously. The optical sensors already measure that.

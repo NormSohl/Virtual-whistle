@@ -138,6 +138,13 @@ button.key:focus-visible, .btn:focus-visible { outline: 3px solid var(--covered)
             <option value="release">Release only</option>
             <option value="retuned">Wall losses (retuned)</option>
           </select></label>
+        <label class="note" style="display:flex;gap:.4em;align-items:center">WARBL breath
+          <select id="breathSel">
+            <option value="1">As blown (1x)</option>
+            <option value="1.5">Lighter (1.5x)</option>
+            <option value="2">Light (2x)</option>
+            <option value="3">Very light (3x)</option>
+          </select></label>
       </div>
       <dl class="readout">
         <dt>Fingering</dt><dd id="patOut">xxxxxx</dd>
@@ -464,7 +471,13 @@ document.getElementById('wallSel').addEventListener('change', (e) => { wallMode 
 const WHISTLE_BITS = [7, 6, 5, 4, 3, 2];   // whistle holes 1-6 = L1 L2 L3 R1 R2 R3
 let midiOuts = [], ambient = null, msb114 = 0, lsbPressure = 0;
 let rawCal = null, rawAmbient = null, rawSeen = false, uiPending = false;
-const breathGain = 1.0;   // WARBL mouthpiece pressure -> model breath
+// WARBL mouthpiece pressure -> model breath. A control-layer choice, not acoustics: the model keeps its
+// own pressures (and so its tuning and register breaks) while the player picks how hard to blow.
+// 2x means half the real pressure plays the same note. Remembered per browser.
+let breathGain = 1.0;
+const breathSel = document.getElementById('breathSel');
+try { const v = localStorage.getItem('vw-breath-gain'); if (v && [...breathSel.options].some((o) => o.value === v)) { breathSel.value = v; breathGain = Number(v); } } catch (e) {}
+breathSel.addEventListener('change', () => { breathGain = Number(breathSel.value); try { localStorage.setItem('vw-breath-gain', breathSel.value); } catch (e) {} });
 function scheduleUi() {
   if (uiPending) return;
   uiPending = true;

@@ -76,11 +76,19 @@ def cents(f: float, ref: float) -> float:
     return 1200 * np.log2(f / ref)
 
 
+def search_fmin(w: WhistleMM) -> float:
+    """Where to start looking for the first register. 200 Hz for whistle-sized bores (unchanged
+    results); for longer bores, half the open-open fundamental, so a bass instrument's bottom
+    note is not skipped (which would shift every register by one)."""
+    air = tmm.Air(w.temp_c)
+    return float(min(200.0, 0.5 * air.c / (2 * w.bore_length * MM)))
+
+
 def predict(w: WhistleMM, pattern: str, register: int, fmax: float = 5000.0) -> float:
     """Predicted playing frequency (Hz) for a fingering in a given register."""
     bore, holes, window, air = w.to_model()
     fs = tmm.playing_frequencies(bore, holes, openness(pattern), window, air,
-                                 fmin=200.0, fmax=fmax, n_registers=register, df=3.0)
+                                 fmin=search_fmin(w), fmax=fmax, n_registers=register, df=3.0)
     return fs[register - 1] if len(fs) >= register else float("nan")
 
 
@@ -166,7 +174,7 @@ def openness_for_target(w: WhistleMM, pattern: str, register: int, target_hz: fl
         o = list(base)
         o[hole_index] = s
         bore, holes, window, air = w.to_model()
-        fs = tmm.playing_frequencies(bore, holes, o, window, air, fmin=200.0, fmax=5000.0,
+        fs = tmm.playing_frequencies(bore, holes, o, window, air, fmin=search_fmin(w), fmax=5000.0,
                                      n_registers=register, df=3.0)
         return fs[register - 1] if len(fs) >= register else float("nan")
 
