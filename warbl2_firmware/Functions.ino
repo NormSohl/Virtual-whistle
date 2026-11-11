@@ -2800,13 +2800,18 @@ void handleControlChange(byte source, byte channel, byte number, byte value) {
                     // Raw-stream mode runs alongside normal playing (notes and CCs keep flowing).
                     rawStreamMode = 1;
                     rawStreamSource = source;
-                    useBellSensor = true;
+                    updateBellSensor();  // On while streaming, whatever the saved setting.
                     sendRawCalibration();
                 }
 
                 else if (value == MIDI_EXIT_RAW_STREAM) {
-                    rawStreamMode = 0;
-                    rawStreamSource = MIDI_SOURCE_NONE;
+                    if (rawStreamSource == source) {  // Only the host that started the stream can stop it (as for diagnostics).
+                        rawStreamMode = 0;
+                        rawStreamSource = MIDI_SOURCE_NONE;
+                        if (!diagnosticMode) {
+                            updateBellSensor();  // Back to the saved setting. Diagnostics also wants it on, so leave it then.
+                        }
+                    }
                 }
 
                 else if (value == MIDI_RAW_STREAM_CALIBRATION) {
@@ -4055,14 +4060,22 @@ void loadPrefs() {
         pitchRegisterBounds[i] = ((i * pitchPerRegister) + IMUsettings[preset][PITCH_REGISTER_INPUT_MIN] * 5) - 90;  // Upper/lower bounds for each register
     }
 
-    // Handle turning the bell sensor on/off.
+    updateBellSensor();
+}
+
+
+
+// Decide whether the bell sensor is on, from the saved setting and the current preset.
+// Raw-stream mode keeps it on: the host's model needs all nine readings, and loadPrefs() runs on
+// every preset change or Config Tool edit, which would otherwise switch it off mid-stream.
+void updateBellSensor() {
     static bool prevUseBellSensorChanged = true;
     if (WARBL2settings[USE_BELL_SENSOR]) {
         useBellSensor = true;
     } else {
         useBellSensor = false;
     }
-    if (modeSelector[preset] == kModeUilleann || modeSelector[preset] == kModeUilleannStandard || breathMode == kPressureBell) {  // Use the bell sensor if we're using uilleann fingering or bell register.
+    if (modeSelector[preset] == kModeUilleann || modeSelector[preset] == kModeUilleannStandard || breathMode == kPressureBell || rawStreamMode) {  // Use the bell sensor if we're using uilleann fingering or bell register, or streaming raw readings.
         useBellSensor = true;
     }
     if (prevUseBellSensorChanged != useBellSensor) {  // Record whether the state has changed so we know to tell the ATMeaga to turn the sensor on or off.
