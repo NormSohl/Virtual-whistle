@@ -137,11 +137,12 @@ button.key:focus-visible, .btn:focus-visible { outline: 3px solid var(--covered)
             <option value="off">Off (Generation D)</option>
             <option value="release">Release only</option>
             <option value="retuned">Wall losses (retuned)</option>
-            <option value="retunedFree">Wall losses (retuned), no jet-delay limit</option>
           </select></label>
         <label class="note" style="display:flex;gap:.4em;align-items:center">WARBL breath
           <select id="breathSel">
-            <option value="1">As blown (1x)</option>
+            <option value="0.5">Very heavy (0.5x)</option>
+            <option value="0.75">Heavier (0.75x)</option>
+            <option value="1" selected>As blown (1x)</option>
             <option value="1.5">Lighter (1.5x)</option>
             <option value="2">Light (2x)</option>
             <option value="3">Very light (3x)</option>
@@ -476,13 +477,10 @@ const VW_PRESETS = {
 };
 
 // Build a whistle for a page mode: 'off' Generation D, 'release' Generation D with wall losses only in
-// note tails, 'retuned' the generationDWall preset, 'retunedFree' the same without the jet-delay rate limit
-// (listening A/B, 2026-11-10: does a breath-only octave drop feel quicker, are releases still clean?).
+// note tails, 'retuned' the generationDWall preset.
 function vwMakeVariant(mode, sampleRate) {
-  const retuned = mode === 'retuned' || mode === 'retunedFree';
-  const p = retuned ? VW_PRESETS.generationDWall : VW_PRESETS.generationD;
-  const extra = mode === 'retunedFree' ? { jetDelayRise: 1e6 } : {};
-  const w = new VwWhistle(vwGenerationD(), Object.assign({ sampleRate }, p.settings, extra));
+  const p = mode === 'retuned' ? VW_PRESETS.generationDWall : VW_PRESETS.generationD;
+  const w = new VwWhistle(vwGenerationD(), Object.assign({ sampleRate }, p.settings));
   if (mode === 'release') w.setWallLoss(1, true);
   return { w, rawGain: p.rawGain };
 }
@@ -1206,13 +1204,10 @@ const VW_PRESETS = {
 };
 
 // Build a whistle for a page mode: 'off' Generation D, 'release' Generation D with wall losses only in
-// note tails, 'retuned' the generationDWall preset, 'retunedFree' the same without the jet-delay rate limit
-// (listening A/B, 2026-11-10: does a breath-only octave drop feel quicker, are releases still clean?).
+// note tails, 'retuned' the generationDWall preset.
 function vwMakeVariant(mode, sampleRate) {
-  const retuned = mode === 'retuned' || mode === 'retunedFree';
-  const p = retuned ? VW_PRESETS.generationDWall : VW_PRESETS.generationD;
-  const extra = mode === 'retunedFree' ? { jetDelayRise: 1e6 } : {};
-  const w = new VwWhistle(vwGenerationD(), Object.assign({ sampleRate }, p.settings, extra));
+  const p = mode === 'retuned' ? VW_PRESETS.generationDWall : VW_PRESETS.generationD;
+  const w = new VwWhistle(vwGenerationD(), Object.assign({ sampleRate }, p.settings));
   if (mode === 'release') w.setWallLoss(1, true);
   return { w, rawGain: p.rawGain };
 }
