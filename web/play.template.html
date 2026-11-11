@@ -132,27 +132,13 @@ button.key:focus-visible, .btn:focus-visible { outline: 3px solid var(--covered)
         <button class="btn" id="startBtn" type="button">Start sound</button>
         <button class="btn ghost" id="midiBtn" type="button">Connect WARBL</button>
         <button class="btn ghost" id="recBtn" type="button">Record</button>
-        <label class="note" style="display:flex;gap:.4em;align-items:center">Wall losses
-          <select id="wallSel">
-            <option value="off">Off (Generation D)</option>
-            <option value="release">Release only</option>
-          </select></label>
-        <label class="note" style="display:flex;gap:.4em;align-items:center">WARBL breath
-          <select id="breathSel">
-            <option value="0.5">Very heavy (0.5x)</option>
-            <option value="0.75" selected>Heavier (0.75x)</option>
-            <option value="1">As blown (1x)</option>
-            <option value="1.5">Lighter (1.5x)</option>
-            <option value="2">Light (2x)</option>
-            <option value="3">Very light (3x)</option>
-          </select></label>
       </div>
       <dl class="readout">
         <dt>Fingering</dt><dd id="patOut">xxxxxx</dd>
         <dt>Breath</dt><dd id="breathOut">0 Pa</dd>
         <dt>Engine</dt><dd id="engineOut">not started</dd>
       </dl>
-      <p class="note" id="midiNote"><b>WARBL:</b> needs a browser with Web MIDI. Safari on iPad has none, so inside the Claude app play with touch. Chrome on the Mac works, and so does this page opened in an iPad Web MIDI browser.</p>
+      <p class="note" id="midiNote"><b>WARBL:</b> needs a browser with Web MIDI, such as Chrome or Edge on a computer, or a Web MIDI browser on iPad. Safari has none; there, play with touch or the mouse.</p>
     </section>
 
     <section class="panel">
@@ -450,7 +436,9 @@ async function toggleRecord() {
 }
 document.getElementById('recBtn').addEventListener('click', toggleRecord);
 
-let wallMode = 'off';
+// Generation D with wall losses only in note tails (Norm's choice by ear, 2026-11-10; the page no longer
+// offers the other modes, which vwMakeVariant still builds for offline checks).
+const wallMode = 'release';
 function sendWall() {
   if (node) node.port.postMessage({ wall: wallMode });
   if (sp && sp.whistle) {
@@ -459,7 +447,6 @@ function sendWall() {
     sp.whistle = v.w; sp.gain = 0.0006 * v.rawGain;
   }
 }
-document.getElementById('wallSel').addEventListener('change', (e) => { wallMode = e.target.value; sendWall(); });
 
 // ---------------------------------------------------------------- WARBL (Web MIDI)
 // Two ways in, best first:
@@ -474,11 +461,9 @@ let midiOuts = [], ambient = null, msb114 = 0, lsbPressure = 0;
 let rawCal = null, rawAmbient = null, rawSeen = false, uiPending = false;
 // WARBL mouthpiece pressure -> model breath. A control-layer choice, not acoustics: the model keeps its
 // own pressures (and so its tuning and register breaks) while the player picks how hard to blow.
-// 2x means half the real pressure plays the same note. Remembered per browser. Default 0.75x (Norm, 2026-11-10).
-let breathGain = 0.75;
-const breathSel = document.getElementById('breathSel');
-try { const v = localStorage.getItem('vw-breath-gain'); if (v && [...breathSel.options].some((o) => o.value === v)) { breathSel.value = v; breathGain = Number(v); } } catch (e) {}
-breathSel.addEventListener('change', () => { breathGain = Number(breathSel.value); try { localStorage.setItem('vw-breath-gain', breathSel.value); } catch (e) {} });
+// 0.75 means it takes a third more real pressure than the model's own to play a note: Norm's choice by ear
+// (2026-11-10, picked from 0.5x-3x).
+const breathGain = 0.75;
 function scheduleUi() {
   if (uiPending) return;
   uiPending = true;
