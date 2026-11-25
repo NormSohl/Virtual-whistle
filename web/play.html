@@ -155,6 +155,97 @@ button.key:focus-visible, .btn:focus-visible { outline: 3px solid var(--covered)
   </div>
 </div>
 
+<script>// WARBL sensor streaming protocol v3 (official WARBL2 firmware 4.8+), host side.
+// Spec: github.com/amowry/WARBL2/blob/main/WARBL_sensor_stream_protocol_v3.md
+// Pure functions, no DOM: the play page inlines this file, tests load it in node.
+// Messages: F0 00 03 0F 03 <type> <payload packed MSB-first into 7-bit bytes> F7.
+const WarblStream = (() => {
+  const HEADER = [0xF0, 0x00, 0x03, 0x0F, 0x03];
+  const FRAME = 0x01, BATCH = 0x02, INFO = 0x10, CONFIG = 0x20, REQUEST_INFO = 0x21;
+  const FRAME_LEN = 39, INFO_LEN = 62;
+  const SEQ_MOD = 16384, TS_MOD = 2097152, TS_HZ = 32768;
+  const PA_PER_COUNT = 1 / 2.184;            // pressure: both sensors, nominal 2.184 counts per Pa
+
+  // Commands (host -> WARBL). Bit 0 streams, bit 1 suppresses notes/CCs, bit 2 legacy keepalive.
+  const config = (on, suppress) => [...HEADER, CONFIG, on ? (0x05 | (suppress ? 0x02 : 0)) : 0x00, 0xF7];
+  const requestInfo = () => [...HEADER, REQUEST_INFO, 0xF7];
+
+  function reader(d) {                       // d: whole message incl. F0 ... F7
+    let pos = 0; const n = (d.length - 7) * 7;
+    const get = (bits) => {
+      if (pos + bits > n) throw new Error('truncated');
+      let v = 0;
+      for (let i = 0; i < bits; i++, pos++) v = v * 2 + ((d[6 + Math.floor(pos / 7)] >> (6 - pos % 7)) & 1);
+      return v;
+    };
+    return { get, s16: () => { const v = get(16); return v >= 32768 ? v - 65536 : v; } };
+  }
+
+  // Our message? Returns its type, or null. Data bytes must all be 7-bit.
+  function messageType(d) {
+    if (d.length < 7 || d[0] !== 0xF0 || d[d.length - 1] !== 0xF7) return null;
+    if (d[1] !== 0x00 || d[2] !== 0x03 || d[3] !== 0x0F || d[4] !== 0x03) return null;
+    for (let i = 1; i < d.length - 1; i++) if (d[i] & 0x80) return null;
+    return d[5];
+  }
+
+  const angle = (v) => v * 180 / 32767;
+
+  // USB frame: one sample. Throws on a wrong length (truncated or merged message).
+  function decodeFrame(d) {
+    if (d.length !== FRAME_LEN) throw new Error('frame length ' + d.length);
+    const r = reader(d);
+    const seq = r.get(14), ts = r.get(21);
+    const holes = Array.from({ length: 9 }, () => r.get(10));
+    const pressure = r.get(14);
+    const accelY = r.s16(), roll = angle(r.s16()), elevation = angle(r.s16()), yaw = angle(r.s16());
+    const coveredMask = r.get(9), flags = r.get(7);
+    return { samples: [{ seq, ts, holes, pressure }], accelY, roll, elevation, yaw, coveredMask, flags };
+  }
+
+  // BLE batch: 1-16 samples, oldest first; timestamps between first and last are estimates.
+  function decodeBatch(d) {
+    const r = reader(d);
+    const seq0 = r.get(14), ts0 = r.get(21), ts1 = r.get(21), count = r.get(5);
+    const accelY = r.s16(), roll = angle(r.s16()), elevation = angle(r.s16()), yaw = angle(r.s16());
+    const flags = r.get(7);
+    if (count < 1 || count > 16) throw new Error('batch count ' + count);
+    if (d.length !== 7 + Math.ceil((132 + 104 * count) / 7)) throw new Error('batch length ' + d.length);
+    const span = (ts1 - ts0 + TS_MOD) % TS_MOD;
+    const samples = [];
+    for (let i = 0; i < count; i++) {
+      const pressure = r.get(14);            // pressure before holes in a batch
+      const holes = Array.from({ length: 9 }, () => r.get(10));
+      samples.push({ seq: (seq0 + i) % SEQ_MOD, ts: (ts0 + (count === 1 ? 0 : Math.round(span * i / (count - 1)))) % TS_MOD, holes, pressure });
+    }
+    return { samples, accelY, roll, elevation, yaw, coveredMask: null, flags };
+  }
+
+  // Calibration. Firmware stores toneholeCovered as an absolute reading (like the baseline), so the
+  // full-cover span is covered - baseline. (The v3 spec's "relative to baseline" note disagrees with
+  // the firmware; see docs/warbl-raw-stream.md.)
+  function decodeInfo(d) {
+    if (d.length !== INFO_LEN) throw new Error('info length ' + d.length);
+    const r = reader(d);
+    const firmware = r.get(16);
+    const baseline = Array.from({ length: 9 }, () => r.get(16));
+    const covered = Array.from({ length: 9 }, () => r.get(16));
+    const legacyCalibration = r.get(16), accelRange = r.get(16), gyroRange = r.get(16);
+    const loopMs = r.get(16), ambient = r.get(16);
+    const span = covered.map((c, i) => Math.max(1, c - baseline[i]));
+    return { firmware, baseline, covered, span, legacyCalibration, accelRange, gyroRange, loopMs, ambient };
+  }
+
+  // 0 open .. 1 fully covered, for firmware hole index i.
+  const coverage = (info, raw, i) => Math.max(0, Math.min(1, (raw - info.baseline[i]) / info.span[i]));
+  const pressurePa = (info, p) => (p - info.ambient) * PA_PER_COUNT;
+  const seqStep = (cur, prev) => (cur - prev + SEQ_MOD) % SEQ_MOD;
+  const tsMs = (cur, prev) => ((cur - prev + TS_MOD) % TS_MOD) * 1000 / TS_HZ;
+
+  return { FRAME, BATCH, INFO, config, requestInfo, messageType, decodeFrame, decodeBatch, decodeInfo, coverage, pressurePa, seqStep, tsMs };
+})();
+if (typeof module !== 'undefined') module.exports = WarblStream;
+</script>
 <script>
 // JavaScript port of dsp/whistle.hpp (physical flue jet, model 2, with radiation).
 // Kept line-for-line close to the C++ so the two can be checked against each
@@ -765,15 +856,17 @@ function sendWall() {
 
 // ---------------------------------------------------------------- WARBL (Web MIDI)
 // Two ways in, best first:
-//  1. Raw stream (virtual-whistle WARBL2 firmware fork, CC 106 = 79 on channel 7):
-//     SysEx F0 7D 'W' 'R' 01 seq + nine unfiltered hole readings + pressure, every ~2 ms.
-//     Coverage is continuous, so shading and slides reach the model.
-//  2. Stock firmware: Config Tool communication mode (CC 102 = 126). Hole bitmask on
+//  1. Sensor stream (WARBL2 firmware 4.8+, protocol v3; decoder in web/warbl-stream.js):
+//     SysEx F0 00 03 0F 03 ..., one frame per ~2 ms with nine unfiltered 10-bit hole readings
+//     and 14-bit pressure. Coverage is continuous, so shading and slides reach the model.
+//     The stream stops 3 s after the last renewal, so the page renews it every second.
+//  2. Older firmware: Config Tool communication mode (CC 102 = 126). Hole bitmask on
 //     CC 114/115 and pressure on CC 116/118, ~40 per second, holes only open or closed.
 // Firmware hole order: 0 bell, 1 R4, 2 R3, 3 R2, 4 R1, 5 L3, 6 L2, 7 L1, 8 thumb.
 const WHISTLE_BITS = [7, 6, 5, 4, 3, 2];   // whistle holes 1-6 = L1 L2 L3 R1 R2 R3
+const WS = WarblStream;
 let midiOuts = [], ambient = null, msb114 = 0, lsbPressure = 0;
-let rawCal = null, rawAmbient = null, rawSeen = false, uiPending = false;
+let streamInfo = null, rawSeen = false, uiPending = false, keepalive = null;
 // WARBL mouthpiece pressure -> model breath. A control-layer choice, not acoustics: the model keeps its
 // own pressures (and so its tuning and register breaks) while the player picks how hard to blow.
 // 0.75 means it takes a third more real pressure than the model's own to play a note: Norm's choice by ear
@@ -784,82 +877,97 @@ function scheduleUi() {
   uiPending = true;
   requestAnimationFrame(() => { uiPending = false; update(); document.getElementById('breathOut').textContent = Math.round(breath * 1500) + ' Pa'; level.style.top = ((1 - breath / MAX_BREATH) * 100) + '%'; });
 }
+const sendAll = (msg) => midiOuts.forEach((o) => { try { o.send(msg); } catch (e) {} });
+function stopStream() {
+  clearInterval(keepalive); keepalive = null;
+  sendAll(WS.config(false));
+}
 async function connectMidi() {
   const chip = document.getElementById('midiChip');
   if (!navigator.requestMIDIAccess) { chip.textContent = 'No Web MIDI here'; chip.className = 'chip err'; return; }
   try {
-    let access;
+    let access, sysex = true;
     try { access = await navigator.requestMIDIAccess({ sysex: true }); }
-    catch (e) { access = await navigator.requestMIDIAccess({ sysex: false }); }
+    catch (e) { access = await navigator.requestMIDIAccess({ sysex: false }); sysex = false; }
     midiOuts = [...access.outputs.values()];
     const ins = [...access.inputs.values()];
     if (!ins.length) { chip.textContent = 'No MIDI device found'; chip.className = 'chip err'; return; }
     ins.forEach((inp) => { inp.onmidimessage = onMidi; });
-    midiOuts.forEach((o) => o.send([0xB6, 106, 79]));          // ask for the raw stream
+    if (sysex) {
+      // Normal notes and CCs keep going out alongside the stream, so the WARBL still plays any synth.
+      sendAll(WS.config(true, false)); sendAll(WS.requestInfo());
+      clearInterval(keepalive);
+      keepalive = setInterval(() => sendAll(WS.config(true, false)), 1000);
+    }
     chip.textContent = 'WARBL: waiting'; chip.className = 'chip';
     setTimeout(() => {
       if (rawSeen) return;
-      midiOuts.forEach((o) => o.send([0xB6, 102, 126]));       // stock firmware: Config Tool mode
-      chip.textContent = 'WARBL: stock firmware (on/off holes)'; chip.className = 'chip on';
+      stopStream();
+      sendAll([0xB6, 102, 126]);                                  // older firmware: Config Tool mode
+      chip.textContent = 'WARBL: no sensor stream (on/off holes; firmware 4.8+ streams)'; chip.className = 'chip on';
     }, 600);
     if (!ctx) start();
   } catch (e) { chip.textContent = 'MIDI blocked'; chip.className = 'chip err'; }
 }
-// Stream health, shown on the MIDI chip once a second: frames/s, frames lost (seq gaps),
-// malformed frames (wrong length), and the longest gap between frames (ms, host timestamps).
-const rawStats = { frames: 0, dropped: 0, bad: 0, dup: 0, lastSeq: -1, lastT: 0, maxGap: 0, totalFrames: 0, totalDropped: 0, totalBad: 0, totalDup: 0 };
-// macOS can expose the same WARBL through more than one MIDI input; listen to raw frames
-// from the first input that sends one, and count repeats of the same seq as duplicates.
+// Stream health, shown on the MIDI chip once a second: samples/s, lost (sequence gaps),
+// bad messages (wrong length or count), duplicates, and the longest gap between samples
+// by the WARBL's own clock (so host scheduling jitter doesn't count).
+const rawStats = { frames: 0, dropped: 0, bad: 0, dup: 0, lastSeq: -1, lastTs: -1, maxGap: 0, totalFrames: 0, totalDropped: 0, totalBad: 0, totalDup: 0 };
+// macOS can expose the same WARBL through more than one MIDI input; take the stream
+// from the first input that sends it, and count repeats of the same sequence as duplicates.
 let rawInputId = null;
 function showRawStats() {
   const s = rawStats;
   s.totalFrames += s.frames; s.totalDropped += s.dropped; s.totalBad += s.bad; s.totalDup += s.dup;
   const chip = document.getElementById('midiChip');
-  chip.textContent = `WARBL: raw stream · ${s.frames}/s · lost ${s.dropped} · bad ${s.bad} · dup ${s.dup} · max gap ${s.maxGap.toFixed(1)} ms`;
-  chip.title = `Totals: ${s.totalFrames} frames, ${s.totalDropped} lost, ${s.totalBad} bad, ${s.totalDup} duplicate${rawInputId ? ', input ' + rawInputId : ''}`;
-  console.log('[raw]', chip.textContent, '|', chip.title);
+  chip.textContent = `WARBL: sensor stream · ${s.frames}/s · lost ${s.dropped} · bad ${s.bad} · dup ${s.dup} · max gap ${s.maxGap.toFixed(1)} ms`;
+  chip.title = `Totals: ${s.totalFrames} samples, ${s.totalDropped} lost, ${s.totalBad} bad, ${s.totalDup} duplicate${streamInfo ? ', firmware ' + streamInfo.firmware : ', no calibration yet'}${rawInputId ? ', input ' + rawInputId : ''}`;
+  console.log('[stream]', chip.textContent, '|', chip.title);
   s.frames = 0; s.dropped = 0; s.bad = 0; s.dup = 0; s.maxGap = 0;
+  if (!streamInfo) sendAll(WS.requestInfo());                 // the INFO reply can be missed; ask again
 }
-function onRawFrame(d, t) {
-  // d: full SysEx including F0 ... F7; t: event timestamp (ms)
-  const u14 = (i) => d[i] | (d[i + 1] << 7);
-  if (d[4] === 0x02 && d.length === 29) {          // F0 7D W R 02 format version patch c0..c8 ambient F7
-    rawCal = []; for (let h = 0; h < 9; h++) rawCal.push(Math.max(1, u14(8 + 2 * h)));
-    rawAmbient = u14(26) - 8192;
-    return;
+function onStreamMessage(d, type) {
+  let msg;
+  try {
+    if (type === WS.INFO) { streamInfo = WS.decodeInfo(d); return; }
+    if (type === WS.FRAME) msg = WS.decodeFrame(d);
+    else if (type === WS.BATCH) msg = WS.decodeBatch(d);
+    else return;                                               // unknown types: ignore
+  } catch (e) { rawStats.bad++; return; }
+  let fresh = null;
+  for (const smp of msg.samples) {
+    if (smp.seq === rawStats.lastSeq) { rawStats.dup++; continue; }
+    rawStats.frames++;
+    if (rawStats.lastSeq >= 0) {
+      const step = WS.seqStep(smp.seq, rawStats.lastSeq);
+      if (step > 1 && step < 1000) rawStats.dropped += step - 1;     // bigger jumps: a restart, not losses
+      if (rawStats.lastTs >= 0) rawStats.maxGap = Math.max(rawStats.maxGap, WS.tsMs(smp.ts, rawStats.lastTs));
+    }
+    rawStats.lastSeq = smp.seq; rawStats.lastTs = smp.ts;
+    fresh = smp;
   }
-  if (d[4] === 0x01 && d.length !== 27) { rawStats.bad++; return; }   // truncated or merged frame
-  if (d[4] !== 0x01) return;                          // F0 7D W R 01 seq h0..h8 p F7
-  if (d[5] === rawStats.lastSeq) { rawStats.dup++; return; }
-  rawStats.frames++;
-  if (rawStats.lastSeq >= 0) rawStats.dropped += (d[5] - rawStats.lastSeq - 1 + 128) % 128;
-  rawStats.lastSeq = d[5];
-  if (rawStats.lastT > 0) rawStats.maxGap = Math.max(rawStats.maxGap, t - rawStats.lastT);
-  rawStats.lastT = t;
   if (!rawSeen) {
     rawSeen = true;
-    const chip = document.getElementById('midiChip'); chip.textContent = 'WARBL: raw stream'; chip.className = 'chip on';
-    if (!rawCal) midiOuts.forEach((o) => o.send([0xB6, 106, 81]));
+    const chip = document.getElementById('midiChip'); chip.textContent = 'WARBL: sensor stream'; chip.className = 'chip on';
     setInterval(showRawStats, 1000);
   }
-  if (!rawCal) return;
-  WHISTLE_BITS.forEach((bit, i) => {
-    const c = u14(6 + 2 * bit) / rawCal[bit];          // 0 open .. 1 fully covered
-    holes[i] = Math.max(0, Math.min(1, c));
-  });
-  const p = u14(24) - 8192;                            // twelveBitPressure; BMP sensors: 54.6 counts per mbar
-  const pa = Math.max(0, (p - rawAmbient) * 100 / 54.6) * breathGain;
+  if (!fresh || !streamInfo) return;
+  WHISTLE_BITS.forEach((bit, i) => { holes[i] = WS.coverage(streamInfo, fresh.holes[bit], bit); });
+  const pa = Math.max(0, WS.pressurePa(streamInfo, fresh.pressure)) * breathGain;
   breath = Math.min(MAX_BREATH, pa / 1500);
   send();                                              // to the audio engine every frame
   scheduleUi();                                        // screen at display rate
 }
 function onMidi(ev) {
   const d = ev.data;
-  if (d[0] === 0xF0) { if (d[1] === 0x7D && d[2] === 0x57 && d[3] === 0x52) {
+  if (d[0] === 0xF0) {
+    const type = WS.messageType(d);
+    if (type === null) return;
     const id = ev.target && ev.target.id;
     if (rawInputId === null) rawInputId = id;
-    if (id === rawInputId) onRawFrame(d, ev.timeStamp);
-  } return; }
+    if (id === rawInputId) onStreamMessage(d, type);
+    return;
+  }
   if (rawSeen) return;
   const [st, d1, d2] = d;
   if ((st & 0xF0) !== 0xB0 || (st & 0x0F) !== 6) return;   // CCs on channel 7
@@ -877,7 +985,7 @@ function onMidi(ev) {
   }
 }
 document.getElementById('midiBtn').addEventListener('click', connectMidi);
-addEventListener('pagehide', () => midiOuts.forEach((o) => { try { o.send([0xB6, 106, 80]); o.send([0xB6, 102, 104]); } catch (e) {} }));
+addEventListener('pagehide', () => { stopStream(); sendAll([0xB6, 102, 104]); });
 
 update();
 setBreath(0);

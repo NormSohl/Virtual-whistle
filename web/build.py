@@ -3,6 +3,7 @@ from pathlib import Path
 
 here = Path(__file__).resolve().parent
 model = (here / "whistle-model.js").read_text()
-page = (here / "play.template.html").read_text().replace("/*__MODEL__*/", model)
+stream = (here / "warbl-stream.js").read_text()
+page = (here / "play.template.html").read_text().replace("/*__MODEL__*/", model).replace("/*__STREAM__*/", stream)
 (here / "play.html").write_text(page)
 print(f"wrote {here / 'play.html'} ({len(page)} bytes)")

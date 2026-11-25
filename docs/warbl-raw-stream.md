@@ -1,41 +1,33 @@
-# WARBL2 raw stream (firmware fork)
+# WARBL2 sensor stream
 
-Branch **`warbl2-raw-stream`** of this repo (public since 2026-11-07): the full amowry/WARBL2 history with two raw-stream commits on top of upstream main (4.8.0, commit 9ae59a2). It shares no history with `main`; check it out separately. Patches in `firmware/patches/`, test build `firmware/WARBL2_firmware_4.8.0_rawstream1.uf2` (arduino-cli 1.5.2, Adafruit nRF52 core 1.7.0, board WARBL2, BMP5xx library patched to 8 MHz SPI per the WARBL2 build notes). Compiles: 245,540 bytes flash (30 %), 28,088 bytes RAM (11 %). **Runs on hardware** (first test 2026-11-07, see below).
+Since firmware 4.8 (released 2026-11-20; binary `WARBL2_firmware_4.8.1.uf2` in amowry/WARBL2 `warbl2_firmware/build/adafruit.nrf52.warbl2/`), the official WARBL2 firmware streams raw sensor data over SysEx. The play page uses it; our own firmware fork (below) is superseded and no longer read by the page.
 
-## Why
-Stock firmware reports holes as covered/uncovered after an adaptive smoothing filter, and to the Config Tool only every 25+ ms. A physical model needs how much of each hole is covered, continuously. The optical sensors already measure that.
+Spec: [WARBL_sensor_stream_protocol_v3.md](https://github.com/amowry/WARBL2/blob/main/WARBL_sensor_stream_protocol_v3.md). Andrew's reference host: [WARBL_stream_monitor.html](https://warbl.xyz/WARBL_stream_monitor.html). Our decoder: `web/warbl-stream.js`, tested in `tests/test_warbl_stream.py` against messages packed the way the firmware packs them.
 
-## Protocol
-Commands, CC 106 on MIDI channel 7 (bytes `B6 6A vv`):
-| Value | Meaning |
-|---|---|
-| 79 | Enter raw-stream mode (sends a calibration frame first) |
-| 80 | Exit raw-stream mode |
-| 81 | Re-send the calibration frame |
+## What the page does
+- Sends `F0 00 03 0F 03 20 05 F7` (stream on, normal MIDI kept) and `F0 00 03 0F 03 21 F7` (request calibration) to every MIDI output, then renews the config every second (the WARBL stops streaming 3 s after the last renewal, so closing the tab or a crash ends it by itself). Sends `... 20 00 F7` on page hide.
+- Decodes USB frames (type 01, 39 bytes, ~500/s) and BLE batches (type 02); applies the newest sample per message. Takes the stream from the first MIDI input that sends it (macOS shows the WARBL twice).
+- Calibration from STREAM_INFO (type 10): coverage = (raw - baseline) / (covered - baseline), clamped 0..1. Re-requested every second until it arrives.
+- Pressure: Pa = (p - ambient14) / 2.184, both sensor types.
+- No stream within 0.6 s (older firmware, or no SysEx permission): stops the stream requests and falls back to Config Tool mode (on/off holes, ~40 Hz).
+- Health chip: samples/s, lost (sequence gaps), bad (wrong length), duplicates, longest gap by the WARBL's own 32768 Hz clock.
 
-Raw stream runs alongside normal playing: notes and CCs still go out, so the WARBL keeps working with any synth. USB only.
+## Differences from our fork
+| | Fork (rawstream1, 2026-11-07) | Official v3 |
+|---|---|---|
+| Start | CC 106 = 79 | SysEx config, renewed every second |
+| ID | `7D 57 52` (non-commercial) | `00 03 0F` (registered) |
+| Holes | 14-bit, baseline already subtracted | 10-bit raw, host subtracts baseline |
+| Pressure | twelveBit + 8192 | 14-bit, 2.184 counts/Pa |
+| Also | - | 14-bit seq, device timestamp, Y accel, roll/elevation/yaw, covered mask, flags, BLE batches |
 
-Data frame, every main-loop pass (~2 ms on USB), 27 bytes:
-`F0 7D 57 52 01 seq h0lo h0hi ... h8lo h8hi plo phi F7`
-- `7D` = non-commercial SysEx ID; `57 52` = "WR".
-- `seq` 0-127 increments per frame (detect drops).
-- h0..h8: holes bell, R4, R3, R2, R1, L3, L2, L1, thumb. 14-bit, baseline-corrected (0 = uncovered), taken **before** the firmware's adaptive smoothing filter.
-- p: `twelveBitPressure + 8192`. On BMP585 hardware twelveBitPressure = (breath − ambient) mbar × 54.6 + 400.
+## Spec note for Andrew
+The spec says covered thresholds are "relative to baseline" and gives coverage = (raw - baseline) / coveredThreshold. In the firmware, `toneholeCovered` is an absolute reading (calibration takes the highest raw reading, then subtracts 20 % of the span as a feel offset; `Functions.ino` compares `toneholeRead - baseline` against `toneholeCovered - baseline`). So the full-cover span is covered - baseline, which is what the page uses. Worth confirming with him.
 
-Calibration frame, 29 bytes:
-`F0 7D 57 52 02 format version patch c0lo c0hi ... c8lo c8hi alo ahi F7`
-- c0..c8: reading at full cover (toneholeCovered − toneholeBaseline). Coverage = h / c, clamp 0..1.
-- a: `(sensorCalibration << 2) + 8192`, the startup pressure in twelve-bit units (ambient).
+## Superseded: our firmware fork
+Branch `warbl2-raw-stream` of this repo, patches in `firmware/patches/`, test build `firmware/WARBL2_firmware_4.8.0_rawstream1.uf2`. Kept for the record; flash the official 4.8.1 instead.
 
-Whistle holes 1-6 map to firmware holes L1, L2, L3, R1, R2, R3 (indices 7, 6, 5, 4, 3, 2).
-
-## Host
-`web/play.html` asks for the raw stream (CC 106 = 79); if no frame arrives within 0.6 s it falls back to the stock Config Tool mode (on/off holes, ~40 Hz). Needs Web MIDI with SysEx: Chrome on the Mac works; Safari doesn't.
-
-## Flashing
-Hold button 1 while plugging the WARBL in (or double-click reset), then copy the .uf2 onto the WARBLBOOT drive. To go back, copy an official release .uf2 the same way. Note: 4.8 firmware may update the WARBL's ATmega sensor firmware on first boot (built-in upstream behaviour).
-
-## Hardware test, 2026-11-07
+### Fork hardware test, 2026-11-07
 Norm's WARBL2 on the Mac Studio, flashed with `rawstream1.uf2` (Terminal `cp -X` to WARBLBOOT; a Finder drag left the board in UF2 mode). `web/play.html` in Chrome, about a minute of playing:
 - 502 frames/s, 0 lost (seq gaps), 0 malformed, longest gap between frames 3.6 ms (host timestamps).
 - Slow half-hole slides bend pitch continuously: coverage reaches the model.
@@ -43,6 +35,5 @@ Norm's WARBL2 on the Mac Studio, flashed with `rawstream1.uf2` (Terminal `cp -X`
 - Open: the WARBL LED keeps flashing blue irregularly after flashing; not explained yet.
 
 ## Open questions
-- Frame rate vs USB: ~13.5 kB/s of SysEx; the firmware writes without blocking, so a stalled host can drop or truncate frames. Hosts must check length and F7.
-- Optical reading vs actual coverage is not linear; a per-hole curve may be needed after first tests.
-- Honeywell (pre-BMP) units: pressure scale differs; host needs a gain.
+- Optical reading vs actual coverage is not linear; a per-hole curve may be needed.
+- First hardware test of the v3 stream on the play page still to do.
