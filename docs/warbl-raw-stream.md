@@ -5,7 +5,7 @@ Since firmware 4.8 (released 2026-11-20; binary `WARBL2_firmware_4.8.1.uf2` in a
 Spec: [WARBL_sensor_stream_protocol_v3.md](https://github.com/amowry/WARBL2/blob/main/WARBL_sensor_stream_protocol_v3.md). Andrew's reference host: [WARBL_stream_monitor.html](https://warbl.xyz/WARBL_stream_monitor.html). Our decoder: `web/warbl-stream.js`, tested in `tests/test_warbl_stream.py` against messages packed the way the firmware packs them.
 
 ## What the page does
-- Sends `F0 00 03 0F 03 20 05 F7` (stream on, normal MIDI kept) and `F0 00 03 0F 03 21 F7` (request calibration) to every MIDI output, then renews the config every second (the WARBL stops streaming 3 s after the last renewal, so closing the tab or a crash ends it by itself). Sends `... 20 00 F7` on page hide.
+- Sends `F0 00 03 0F 03 20 05 F7` (stream on, normal MIDI kept; `07`, normal MIDI suppressed, while the page's MIDI out is on) and `F0 00 03 0F 03 21 F7` (request calibration) to the outputs named WARBL (all outputs if none is), then renews the config every second (the WARBL stops streaming 3 s after the last renewal, so closing the tab or a crash ends it by itself). Sends `... 20 00 F7` on page hide.
 - Decodes USB frames (type 01, 39 bytes, ~500/s) and BLE batches (type 02); applies the newest sample per message. Takes the stream from the first MIDI input that sends it (macOS shows the WARBL twice).
 - Calibration from STREAM_INFO (type 10): coverage = (raw - baseline) / (covered - baseline), clamped 0..1. Re-requested every second until it arrives.
 - Pressure: Pa = (p - ambient14) / 2.184, both sensor types.

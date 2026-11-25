@@ -1,3 +1,4 @@
+<meta charset="utf-8">
 <title>Virtual Generation D</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -102,6 +103,13 @@ button.key:focus-visible, .btn:focus-visible { outline: 3px solid var(--covered)
 .pad.blowing .hint { opacity: 0; }
 .note { color: var(--muted); font-size: 0.9rem; line-height: 1.45; max-width: 65ch; }
 .note b { color: var(--ink); font-weight: 600; }
+.btn.on { background: var(--covered); border-color: var(--covered); color: var(--panel); }
+label.field { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; color: var(--muted); min-width: 0; }
+select { font-family: var(--display); font-size: 1rem; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--bg); color: var(--ink); max-width: 100%; }
+select:focus-visible { outline: 3px solid var(--covered); outline-offset: 2px; }
+.midi-grid { display: grid; grid-template-columns: auto auto minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1.4fr); gap: 12px; align-items: end; }
+@media (max-width: 720px) { .midi-grid { grid-template-columns: 1fr 1fr; } .midi-grid .wide { grid-column: 1 / -1; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 
@@ -114,6 +122,7 @@ button.key:focus-visible, .btn:focus-visible { outline: 3px solid var(--covered)
     <div class="chips">
       <span class="chip" id="audioChip">Audio off</span>
       <span class="chip" id="midiChip">WARBL not connected</span>
+      <span class="chip" id="midiOutChip">MIDI out off</span>
     </div>
   </header>
 
@@ -153,6 +162,30 @@ button.key:focus-visible, .btn:focus-visible { outline: 3px solid var(--covered)
       <p class="note">Green band: this fingering's first register. Brass band: its second register. Bands come from the model's own register map, so blowing into the brass band overblows the octave, as on the real whistle.</p>
     </section>
   </div>
+
+  <section class="panel" aria-labelledby="midiOutTitle">
+    <h2 id="midiOutTitle">MIDI out</h2>
+    <div class="midi-grid">
+      <button class="btn ghost" id="midiOutBtn" type="button" aria-pressed="false">Enable MIDI</button>
+      <button class="btn ghost" id="muteBtn" type="button" aria-pressed="false">Mute audio</button>
+      <label class="field wide">Output<select id="midiOutSel"><option value="">(enable MIDI to list outputs)</option></select></label>
+      <label class="field">Channel<select id="midiChSel"></select></label>
+      <label class="field">Breath<select id="breathCcSel">
+        <option value="2">CC 2 Breath</option>
+        <option value="11">CC 11 Expression</option>
+        <option value="1">CC 1 Mod wheel</option>
+        <option value="7">CC 7 Volume</option>
+        <option value="at">Channel aftertouch</option>
+        <option value="off">Off</option>
+      </select></label>
+    </div>
+    <dl class="readout">
+      <dt>Note</dt><dd id="mNoteOut">–</dd>
+      <dt>Pitch</dt><dd id="mPitchOut">–</dd>
+      <dt>Breath</dt><dd id="mBreathOut">–</dd>
+    </dl>
+    <p class="note"><b>How it plays:</b> one note, D6, starts when the model starts sounding and stops when it stops (or when you stop blowing). Everything in between, slurs and octave jumps included, is pitch bend taken from the pitch the model is actually sounding, so set the synth's bend range to <b>±12 semitones</b> (the page also sends it as RPN 0). Full bend down is D5, the low D; full up is D7. Pitch is the model's own, so it is as sharp as the real Generation D. On a Mac, send to the IAC Driver (turn it on in Audio MIDI Setup) to reach a synth on the same computer.</p>
+  </section>
 </div>
 
 <script>/*__STREAM__*/</script>
@@ -288,8 +321,14 @@ class WhistleProc extends AudioWorkletProcessor {
     this.tBreath = 0; this.cBreath = 0;
     this.gain = 0.0006;   // raw model peaks ~1100 at full second-octave breath
     this.rec = false;
+    // MIDI out: the tracker listens to the model before the mute, so MIDI keeps working with audio muted.
+    this.mute = false; this.track = false;
+    this.tr = new VwPitchTracker(sampleRate);
+    this.lin = new Float32Array(128); this.y = new Float32Array(128);
     this.port.onmessage = (e) => {
       if ('rec' in e.data) { this.rec = e.data.rec; return; }
+      if ('mute' in e.data) { this.mute = e.data.mute; return; }
+      if ('track' in e.data) { this.track = e.data.track; return; }
       if ('wall' in e.data) {
         const v = vwMakeVariant(e.data.wall, sampleRate * this.factor);
         for (let i = 0; i < 6; i++) v.w.setOpenness(i, this.cHoles[i], true);
@@ -301,6 +340,7 @@ class WhistleProc extends AudioWorkletProcessor {
   process(inputs, outputs) {
     const out = outputs[0][0];
     const n = out.length;
+    if (this.lin.length !== n) { this.lin = new Float32Array(n); this.y = new Float32Array(n); }
     // Fingers move over ~15 ms and breath over ~8 ms: instant changes click.
     // Fingers ramp per model sample (a hole's filter changes fastest just before it closes, and
     // block-sized steps there click); breath per block.
@@ -320,11 +360,17 @@ class WhistleProc extends AudioWorkletProcessor {
         }
         acc += this.w.process();
       }
-      out[k] = Math.tanh(this.gain * acc / this.factor);   // soft limit
+      this.lin[k] = this.gain * acc / this.factor;
+      this.y[k] = Math.tanh(this.lin[k]);   // soft limit
+      out[k] = this.mute ? 0 : this.y[k];
+    }
+    if (this.track) {
+      this.tr.push(this.lin, this.cBreath);
+      this.port.postMessage({ trk: 1, g: this.tr.gate, f: this.tr.f, b: this.cBreath });
     }
     for (let c = 1; c < outputs[0].length; c++) outputs[0][c].set(out);
     // Recording: the controls the model actually used this block (after smoothing) plus its audio.
-    if (this.rec) this.port.postMessage({ t: currentFrame / sampleRate, o: this.cHoles.slice(), b: this.cBreath, a: out.slice() });
+    if (this.rec) this.port.postMessage({ t: currentFrame / sampleRate, o: this.cHoles.slice(), b: this.cBreath, a: this.y.slice() });
     return true;
   }
 }
@@ -344,7 +390,7 @@ async function start() {
     await ctx.audioWorklet.addModule(url);
     node = new AudioWorkletNode(ctx, 'whistle', { outputChannelCount: [2] });
     node.connect(ctx.destination);
-    node.port.onmessage = onRecBlock;
+    node.port.onmessage = (e) => { if (e.data.trk) onTrack(e.data); else onRecBlock(e); };
     document.getElementById('engineOut').textContent = 'AudioWorklet, ' + ctx.sampleRate + ' Hz (model at ' + Math.round(96000 / ctx.sampleRate) * ctx.sampleRate + ' Hz)';
   } catch (err) {
     // Fallback where worklets are blocked: ScriptProcessor running the same model.
@@ -355,10 +401,12 @@ async function start() {
     sp.target = message();
     const cur = { holes: [0, 0, 0, 0, 0, 0], breath: 0 };
     sp.cur = cur;
+    sp.tracker = new VwPitchTracker(ctx.sampleRate);
     let spFrame = 0;
     sp.onaudioprocess = (ev) => {
       const L = ev.outputBuffer.getChannelData(0), R = ev.outputBuffer.getChannelData(1);
       const w = sp.whistle, gain = sp.gain;   // the selector can swap the whistle between buffers
+      if (!sp.lin || sp.lin.length !== L.length) { sp.lin = new Float32Array(L.length); sp.y = new Float32Array(L.length); }
       for (let b = 0; b < L.length; b += 32) {
         if (rec) onRecBlock({ data: { t: (spFrame + b) / ctx.sampleRate, o: cur.holes.slice(), b: cur.breath, a: null } });
         const f = 1 / (0.015 * ctx.sampleRate * factor), d0 = sp.target.breath - cur.breath, s = 32 / (0.008 * ctx.sampleRate) * Math.max(0.3, d0 > 0 ? sp.target.breath : cur.breath);
@@ -369,10 +417,16 @@ async function start() {
             for (let i = 0; i < 6; i++) { const dh = sp.target.holes[i] - cur.holes[i]; if (dh !== 0) { cur.holes[i] += Math.abs(dh) <= f ? dh : Math.sign(dh) * f; w.setOpenness(i, cur.holes[i]); } }
             a += w.process();
           }
-          const y = Math.tanh(gain * a / factor); L[k] = y; R[k] = y;
+          sp.lin[k] = gain * a / factor;
+          const y = Math.tanh(sp.lin[k]); sp.y[k] = y;
+          L[k] = R[k] = muted ? 0 : y;
         }
       }
-      if (rec) rec.audio.push(L.slice());
+      if (midiOn) for (let o = 0; o < L.length; o += 128) {
+        const t = sp.tracker.push(sp.lin.subarray(o, Math.min(L.length, o + 128)), cur.breath);
+        onTrack({ g: t.gate, f: t.f, b: cur.breath });
+      }
+      if (rec) rec.audio.push(sp.y.slice());
       spFrame += L.length;
     };
     sp.connect(ctx.destination);
@@ -380,7 +434,8 @@ async function start() {
     console.warn('[audio] AudioWorklet unavailable, using ScriptProcessor:', err);
   }
   sendWall();
-  chip.textContent = 'Audio on'; chip.className = 'chip on';
+  if (node) { node.port.postMessage({ mute: muted }); node.port.postMessage({ track: midiOn }); }
+  chip.textContent = muted ? 'Audio muted' : 'Audio on'; chip.className = 'chip on';
   document.getElementById('startBtn').textContent = 'Sound on';
   send();
 }
@@ -472,33 +527,47 @@ function scheduleUi() {
   uiPending = true;
   requestAnimationFrame(() => { uiPending = false; update(); document.getElementById('breathOut').textContent = Math.round(breath * 1500) + ' Pa'; level.style.top = ((1 - breath / MAX_BREATH) * 100) + '%'; });
 }
-const sendAll = (msg) => midiOuts.forEach((o) => { try { o.send(msg); } catch (e) {} });
+// One MIDI access for the WARBL input and MIDI out. SysEx is needed only for the raw stream.
+let midiAccess = null, midiSysex = false;
+async function getMidiAccess() {
+  if (midiAccess) return midiAccess;
+  try { midiAccess = await navigator.requestMIDIAccess({ sysex: true }); midiSysex = true; }
+  catch (e) { midiAccess = await navigator.requestMIDIAccess({ sysex: false }); }
+  return midiAccess;
+}
+// WARBL setup messages (channel 7 CCs) go only to outputs named WARBL when there are any, so they never
+// reach the synth that MIDI out plays. With no WARBL-named output (renamed ports), they go to all, as before.
+function warblOuts() {
+  const w = midiOuts.filter((o) => /warbl/i.test(o.name || ''));
+  return w.length ? w : midiOuts;
+}
+// While the page's MIDI out is on, the WARBL's own notes and CCs are suppressed in the stream config,
+// so a synth listening to every input doesn't hear both. Otherwise they keep going out alongside it.
+function streamConfig(on) { return WS.config(on, on && midiOn); }
 function stopStream() {
   clearInterval(keepalive); keepalive = null;
-  sendAll(WS.config(false));
+  warblOuts().forEach((o) => { try { o.send(WS.config(false)); } catch (e) {} });
 }
 async function connectMidi() {
   const chip = document.getElementById('midiChip');
   if (!navigator.requestMIDIAccess) { chip.textContent = 'No Web MIDI here'; chip.className = 'chip err'; return; }
   try {
-    let access, sysex = true;
-    try { access = await navigator.requestMIDIAccess({ sysex: true }); }
-    catch (e) { access = await navigator.requestMIDIAccess({ sysex: false }); sysex = false; }
+    const access = await getMidiAccess();
     midiOuts = [...access.outputs.values()];
     const ins = [...access.inputs.values()];
     if (!ins.length) { chip.textContent = 'No MIDI device found'; chip.className = 'chip err'; return; }
     ins.forEach((inp) => { inp.onmidimessage = onMidi; });
-    if (sysex) {
-      // Normal notes and CCs keep going out alongside the stream, so the WARBL still plays any synth.
-      sendAll(WS.config(true, false)); sendAll(WS.requestInfo());
+    if (midiSysex) {
+      const ask = () => warblOuts().forEach((o) => { try { o.send(streamConfig(true)); } catch (e) {} });
+      ask(); warblOuts().forEach((o) => o.send(WS.requestInfo()));
       clearInterval(keepalive);
-      keepalive = setInterval(() => sendAll(WS.config(true, false)), 1000);
+      keepalive = setInterval(ask, 1000);                       // the WARBL stops 3 s after the last renewal
     }
     chip.textContent = 'WARBL: waiting'; chip.className = 'chip';
     setTimeout(() => {
       if (rawSeen) return;
       stopStream();
-      sendAll([0xB6, 102, 126]);                                  // older firmware: Config Tool mode
+      warblOuts().forEach((o) => o.send([0xB6, 102, 126]));    // older firmware: Config Tool mode
       chip.textContent = 'WARBL: no sensor stream (on/off holes; firmware 4.8+ streams)'; chip.className = 'chip on';
     }, 600);
     if (!ctx) start();
@@ -519,7 +588,7 @@ function showRawStats() {
   chip.title = `Totals: ${s.totalFrames} samples, ${s.totalDropped} lost, ${s.totalBad} bad, ${s.totalDup} duplicate${streamInfo ? ', firmware ' + streamInfo.firmware : ', no calibration yet'}${rawInputId ? ', input ' + rawInputId : ''}`;
   console.log('[stream]', chip.textContent, '|', chip.title);
   s.frames = 0; s.dropped = 0; s.bad = 0; s.dup = 0; s.maxGap = 0;
-  if (!streamInfo) sendAll(WS.requestInfo());                 // the INFO reply can be missed; ask again
+  if (!streamInfo) warblOuts().forEach((o) => { try { o.send(WS.requestInfo()); } catch (e) {} });                 // the INFO reply can be missed; ask again
 }
 function onStreamMessage(d, type) {
   let msg;
@@ -580,7 +649,165 @@ function onMidi(ev) {
   }
 }
 document.getElementById('midiBtn').addEventListener('click', connectMidi);
-addEventListener('pagehide', () => { stopStream(); sendAll([0xB6, 102, 104]); });
+addEventListener('pagehide', () => {
+  midiAllOff();
+  warblOuts().forEach((o) => { try { o.send([0xB6, 106, 80]); o.send([0xB6, 102, 104]); } catch (e) {} });
+});
+
+// ---------------------------------------------------------------- MIDI out
+// The model plays; MIDI follows what it sounds. A tracker on the model's own audio (web/pitch-tracker.js)
+// gives a gate (sounding or not) and the pitch it is sounding. One note, D6, is held while the gate is on;
+// the pitch goes out as 14-bit pitch bend over Norm's standard +-12 semitones, so the bend covers D5 (low D,
+// full down) to D7 (full up): two octaves of slurs and octave jumps with no retriggering.
+// Breath: the breath the model is being driven with (after the WARBL breath mapping and the page's ramps),
+// 0-1500 Pa as 0-127, on the CC chosen in the panel.
+const MIDI_NOTE = 86;            // D6
+const BEND_RANGE = 12;           // semitones each way
+let midiOn = false, muted = false, midiOut = null, midiCh = 0, breathCc = '2';
+let mSounding = false, mBend = -1, mBreath = -1, mUi = { g: false, f: 0, bend: 8192, b: 0 }, mUiPending = false;
+const PREF_KEY = 'vw.midiOut';
+function loadPrefs() { try { return JSON.parse(localStorage.getItem(PREF_KEY)) || {}; } catch (e) { return {}; } }
+function savePrefs() { try { localStorage.setItem(PREF_KEY, JSON.stringify({ out: midiOut && midiOut.name, ch: midiCh, cc: breathCc })); } catch (e) {} }
+
+const outSel = document.getElementById('midiOutSel'), chSel = document.getElementById('midiChSel'), ccSel = document.getElementById('breathCcSel');
+for (let c = 0; c < 16; c++) { const o = document.createElement('option'); o.value = String(c); o.textContent = String(c + 1); chSel.appendChild(o); }
+{
+  const p = loadPrefs();
+  if (Number.isInteger(p.ch) && p.ch >= 0 && p.ch < 16) midiCh = p.ch;
+  if (p.cc && [...ccSel.options].some((o) => o.value === p.cc)) breathCc = p.cc;
+  chSel.value = String(midiCh); ccSel.value = breathCc;
+}
+
+function midiSend(bytes) { if (midiOut) { try { midiOut.send(bytes); } catch (e) { console.warn('[midi out]', e); } } }
+function sendBendRange() {
+  const st = 0xB0 | midiCh;   // RPN 0 (pitch bend sensitivity) = 12 semitones, 0 cents, then RPN null
+  midiSend([st, 101, 0]); midiSend([st, 100, 0]); midiSend([st, 6, BEND_RANGE]); midiSend([st, 38, 0]);
+  midiSend([st, 101, 127]); midiSend([st, 100, 127]);
+}
+function sendBreath(v) {
+  if (breathCc === 'off' || v === mBreath) return;
+  mBreath = v;
+  if (breathCc === 'at') midiSend([0xD0 | midiCh, v]);
+  else midiSend([0xB0 | midiCh, Number(breathCc), v]);
+}
+function sendBend(v) { mBend = v; midiSend([0xE0 | midiCh, v & 0x7F, v >> 7]); }
+function bendFor(f) {
+  const semis = 69 + 12 * Math.log2(f / 440) - MIDI_NOTE;
+  return Math.max(0, Math.min(16383, Math.round(8192 + semis / BEND_RANGE * 8192)));
+}
+function midiAllOff() {
+  if (mSounding) midiSend([0x80 | midiCh, MIDI_NOTE, 0]);
+  mSounding = false;
+  if (midiOut) { sendBreath(0); sendBend(8192); }
+}
+
+// Called every audio block (2.7 ms at 48 kHz) with the tracker's gate, pitch and the model's breath.
+function onTrack(m) {
+  if (!midiOn) return;
+  const bv = Math.min(127, Math.round(m.b * 127));
+  if (m.g && m.f > 0) {
+    const bend = bendFor(m.f);
+    if (!mSounding) {
+      sendBend(bend); sendBreath(bv);                          // pitch and breath first, so the note starts in place
+      midiSend([0x90 | midiCh, MIDI_NOTE, 100]);
+      mSounding = true;
+    } else {
+      if (Math.abs(bend - mBend) >= 2) sendBend(bend);         // 2 units = 0.3 cents
+      sendBreath(bv);
+    }
+    mUi.bend = bend;
+  } else {
+    if (mSounding) { midiSend([0x80 | midiCh, MIDI_NOTE, 0]); mSounding = false; }
+    sendBreath(bv);
+  }
+  mUi.g = mSounding; mUi.f = m.f; mUi.b = bv;
+  if (!mUiPending) { mUiPending = true; requestAnimationFrame(drawMidiUi); }
+}
+
+const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+function drawMidiUi() {
+  mUiPending = false;
+  const u = mUi, semi = (u.bend - 8192) / 8192 * BEND_RANGE;
+  document.getElementById('mNoteOut').textContent = midiOn ? (u.g ? 'D6 on' : 'off') : '–';
+  if (midiOn && u.f > 0) {
+    const m = 69 + 12 * Math.log2(u.f / 440), r = Math.round(m), c = Math.round((m - r) * 100);
+    const clamp = u.bend === 0 || u.bend === 16383 ? ' (bend at its limit)' : '';
+    document.getElementById('mPitchOut').textContent = u.f.toFixed(1) + ' Hz = ' + NOTE_NAMES[r % 12] + (Math.floor(r / 12) - 1) +
+      ' ' + (c >= 0 ? '+' : '') + c + ' c · bend ' + (semi >= 0 ? '+' : '') + semi.toFixed(2) + ' st' + clamp;
+  } else document.getElementById('mPitchOut').textContent = '–';
+  document.getElementById('mBreathOut').textContent = midiOn && breathCc !== 'off'
+    ? (breathCc === 'at' ? 'aftertouch ' : 'CC ' + breathCc + ' = ') + u.b : (midiOn ? 'off' : '–');
+}
+
+function listOutputs() {
+  const prev = (midiOut && midiOut.name) || loadPrefs().out;
+  const outs = midiAccess ? [...midiAccess.outputs.values()] : [];
+  outSel.innerHTML = '';
+  if (!outs.length) {
+    const o = document.createElement('option'); o.value = ''; o.textContent = 'No MIDI outputs (Mac: turn on the IAC Driver)'; outSel.appendChild(o);
+    setOut(null); return;
+  }
+  outs.forEach((p) => { const o = document.createElement('option'); o.value = p.id; o.textContent = p.name; outSel.appendChild(o); });
+  // Keep the saved output; otherwise the first one that isn't the WARBL itself.
+  const pick = outs.find((p) => p.name === prev) || outs.find((p) => !/warbl/i.test(p.name || '')) || outs[0];
+  outSel.value = pick.id;
+  setOut(pick);
+}
+function setOut(port) {
+  if (port === midiOut) return;
+  midiAllOff();
+  midiOut = port; mBend = -1; mBreath = -1;
+  if (midiOn && midiOut) sendBendRange();
+  savePrefs(); showMidiOut();
+}
+function showMidiOut() {
+  const chip = document.getElementById('midiOutChip'), btn = document.getElementById('midiOutBtn');
+  btn.textContent = midiOn ? 'MIDI on' : 'Enable MIDI';
+  btn.classList.toggle('on', midiOn); btn.classList.toggle('ghost', !midiOn); btn.setAttribute('aria-pressed', String(midiOn));
+  if (!midiOn) { chip.textContent = 'MIDI out off'; chip.className = 'chip'; }
+  else if (!midiOut) { chip.textContent = 'MIDI out: no output'; chip.className = 'chip err'; }
+  else { chip.textContent = 'MIDI out: ' + midiOut.name + ' ch ' + (midiCh + 1); chip.className = 'chip on'; }
+  drawMidiUi();
+}
+async function toggleMidiOut() {
+  if (!midiOn) {
+    if (!navigator.requestMIDIAccess) { const c = document.getElementById('midiOutChip'); c.textContent = 'No Web MIDI here'; c.className = 'chip err'; return; }
+    try { await getMidiAccess(); } catch (e) { const c = document.getElementById('midiOutChip'); c.textContent = 'MIDI blocked'; c.className = 'chip err'; return; }
+    if (!midiAccess.vwWatching) { midiAccess.vwWatching = true; midiAccess.addEventListener('statechange', (e) => { if (midiOn && e.port.type === 'output') listOutputs(); }); }
+    midiOn = true;
+    listOutputs();
+    if (midiOut) sendBendRange();
+    if (!ctx) await start();
+    if (node) node.port.postMessage({ track: true });
+  } else {
+    midiAllOff();
+    midiOn = false;
+    if (node) node.port.postMessage({ track: false });
+  }
+  if (keepalive) warblOuts().forEach((o) => { try { o.send(streamConfig(true)); } catch (e) {} });   // WARBL notes off/on now
+  showMidiOut();
+}
+document.getElementById('midiOutBtn').addEventListener('click', toggleMidiOut);
+outSel.addEventListener('change', () => setOut(midiAccess && midiAccess.outputs.get(outSel.value) || null));
+chSel.addEventListener('change', () => {
+  midiAllOff(); midiCh = Number(chSel.value); mBend = -1; mBreath = -1;
+  if (midiOn && midiOut) sendBendRange();
+  savePrefs(); showMidiOut();
+});
+ccSel.addEventListener('change', () => {
+  if (mBreath > 0) { mBreath = -1; sendBreath(0); }   // park the old controller at 0
+  breathCc = ccSel.value; mBreath = -1; savePrefs(); drawMidiUi();
+});
+
+function setMute(m) {
+  muted = m;
+  const btn = document.getElementById('muteBtn');
+  btn.textContent = muted ? 'Audio muted' : 'Mute audio';
+  btn.classList.toggle('on', muted); btn.classList.toggle('ghost', !muted); btn.setAttribute('aria-pressed', String(muted));
+  if (node) node.port.postMessage({ mute: muted });
+  if (ctx) { const chip = document.getElementById('audioChip'); chip.textContent = muted ? 'Audio muted' : 'Audio on'; }
+}
+document.getElementById('muteBtn').addEventListener('click', () => setMute(!muted));
 
 update();
 setBreath(0);
